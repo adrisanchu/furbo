@@ -1,0 +1,247 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Furbo design tokens (PRD §6.1, "Tokens de diseño" sketch).
+ * One theme = one block of variables under [data-theme]; next-themes sets
+ * the attribute on <html>. Dark is the house look; light and gamer share
+ * the same structure.
+ */
+
+@custom-variant dark (&:is([data-theme="dark"] *, [data-theme="gamer"] *));
+@custom-variant gamer (&:is([data-theme="gamer"] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), var(--font-inter), sans-serif;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Furbo-specific */
+  --color-subtle: var(--subtle);
+  --color-level-up: var(--level-up);
+  --color-level-down: var(--level-down);
+  --color-warning: var(--warning);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-magenta: var(--neon-magenta);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 6px);
+  --radius-3xl: calc(var(--radius) + 10px);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --font-display-face: var(--font-barlow);
+}
+
+[data-theme="gamer"] {
+  --font-display-face: var(--font-chakra);
+}
+
+/* Light */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --background: #f5f6f4;
+  --foreground: #0d1013;
+  --card: #ffffff;
+  --card-foreground: #0d1013;
+  --popover: #ffffff;
+  --popover-foreground: #0d1013;
+  --primary: #1fbf57;
+  --primary-foreground: #04140a;
+  --secondary: #eef0ec;
+  --secondary-foreground: #0d1013;
+  --muted: #eef0ec;
+  --muted-foreground: #5a6370;
+  --subtle: #69717c;
+  --accent: #e3f7e9;
+  --accent-foreground: #15803d;
+  --destructive: #c8312b;
+  --border: #dde1da;
+  --input: #dde1da;
+  --ring: #1fbf57;
+  --level-up: #15803d;
+  --level-down: #c8312b;
+  --warning: #b45309;
+  --neon-cyan: #0e7490;
+  --neon-magenta: #a21caf;
+  --glow-color: 31 191 87;
+  --glow-color-2: 31 191 87;
+  --glow-strength: 0.22;
+  --glow-blur: 40px;
+  --gradient-accent: linear-gradient(135deg, #1fbf57, #15803d);
+  --radius: 0.875rem;
+}
+
+/* Dark (house default) */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b0d10;
+  --foreground: #f1f0ea;
+  --card: #14171c;
+  --card-foreground: #f1f0ea;
+  --popover: #14171c;
+  --popover-foreground: #f1f0ea;
+  --primary: #2be36b;
+  --primary-foreground: #04140a;
+  --secondary: #1c2027;
+  --secondary-foreground: #f1f0ea;
+  --muted: #1c2027;
+  --muted-foreground: #9aa3ae;
+  --subtle: #7f8894;
+  --accent: #1c2027;
+  --accent-foreground: #2be36b;
+  --destructive: #ff6b6b;
+  --border: #252a32;
+  --input: #252a32;
+  --ring: #2be36b;
+  --level-up: #2be36b;
+  --level-down: #ff6b6b;
+  --warning: #ffb547;
+  --neon-cyan: #22e8ff;
+  --neon-magenta: #ff3dd8;
+  --glow-color: 43 227 107;
+  --glow-color-2: 43 227 107;
+  --glow-strength: 0.55;
+  --glow-blur: 64px;
+  --gradient-accent: linear-gradient(135deg, #2be36b, #1fbf57);
+  --radius: 0.875rem;
+}
+
+/* Gamer (optional) */
+[data-theme="gamer"] {
+  color-scheme: dark;
+  --background: #07060c;
+  --foreground: #f4f1ff;
+  --card: #110e1a;
+  --card-foreground: #f4f1ff;
+  --popover: #110e1a;
+  --popover-foreground: #f4f1ff;
+  --primary: #b8ff3b;
+  --primary-foreground: #0e1400;
+  --secondary: #1a1626;
+  --secondary-foreground: #f4f1ff;
+  --muted: #1a1626;
+  --muted-foreground: #a79fc4;
+  --subtle: #8e86ab;
+  --accent: #22e8ff;
+  --accent-foreground: #07060c;
+  --destructive: #ff5c8a;
+  --border: #2a2340;
+  --input: #2a2340;
+  --ring: #22e8ff;
+  --level-up: #b8ff3b;
+  --level-down: #ff5c8a;
+  --warning: #ffc24d;
+  --neon-cyan: #22e8ff;
+  --neon-magenta: #ff3dd8;
+  --glow-color: 34 232 255;
+  --glow-color-2: 255 61 216;
+  --glow-strength: 0.6;
+  --glow-blur: 90px;
+  --gradient-accent: linear-gradient(135deg, #22e8ff, #ff3dd8);
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/*
+ * Halo: soft accent glow behind key elements (main CTA, next match card,
+ * level indicator). Max 1–2 per screen. Text always sits on a solid
+ * --card or --primary so contrast never depends on the glow.
+ */
+@utility halo {
+  box-shadow:
+    0 0 0 4px rgb(var(--glow-color) / 0.08),
+    0 24px var(--glow-blur) -16px rgb(var(--glow-color) / var(--glow-strength));
+  [data-theme="gamer"] & {
+    box-shadow:
+      0 0 36px -4px rgb(var(--glow-color) / 0.45),
+      0 28px var(--glow-blur) -16px rgb(var(--glow-color-2) / var(--glow-strength));
+  }
+}
+
+/* Highlighted card border: accent tint; animated gradient in gamer. */
+@utility halo-border {
+  border: 1px solid rgb(var(--glow-color) / 0.45);
+  [data-theme="gamer"] & {
+    border: 1.5px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(var(--halo-angle, 135deg), #22e8ff, #ff3dd8, #22e8ff) border-box;
+    animation: halo-spin 8s linear infinite;
+  }
+}
+
+@utility halo-pulse {
+  animation: halo-pulse 2.4s ease-in-out infinite;
+}
+
+@property --halo-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 135deg;
+}
+
+@keyframes halo-spin {
+  to {
+    --halo-angle: 495deg;
+  }
+}
+
+@keyframes halo-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgb(var(--glow-color) / 0.08),
+      0 24px var(--glow-blur) -16px rgb(var(--glow-color) / var(--glow-strength));
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgb(var(--glow-color) / 0.14),
+      0 24px calc(var(--glow-blur) * 1.4) -12px rgb(var(--glow-color) / var(--glow-strength));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
