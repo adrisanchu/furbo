@@ -7,9 +7,31 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { actionEmail, sendEmail } from "@/lib/email";
 
+/**
+ * On Vercel, derive URLs from its system env vars so production and every
+ * preview deployment work without setting BETTER_AUTH_URL by hand.
+ * An explicit BETTER_AUTH_URL (local dev, custom domain) always wins.
+ */
+function https(host: string | undefined) {
+  return host ? `https://${host}` : undefined;
+}
+const vercelOrigins = [
+  process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  process.env.VERCEL_BRANCH_URL,
+  process.env.VERCEL_URL,
+]
+  .map(https)
+  .filter((o): o is string => Boolean(o));
+const baseURL =
+  process.env.BETTER_AUTH_URL ??
+  (process.env.VERCEL_ENV === "production"
+    ? https(process.env.VERCEL_PROJECT_PRODUCTION_URL)
+    : https(process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL));
+
 export const auth = betterAuth({
   appName: "Furbo",
-  baseURL: process.env.BETTER_AUTH_URL,
+  baseURL,
+  trustedOrigins: vercelOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg", usePlural: true, schema }),
   advanced: {
