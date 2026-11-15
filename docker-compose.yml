@@ -1,0 +1,18 @@
+# Optional local Postgres + PostGIS, for working offline or without a Neon branch.
+# DATABASE_URL=postgres://furbo:furbo@localhost:5442/furbo
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    # The official image is amd64-only; Docker Desktop emulates it on Apple Silicon.
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: furbo
+      POSTGRES_PASSWORD: furbo
+      POSTGRES_DB: furbo
+    ports:
+      - "5442:5432"
+    volumes:
+      - furbo-db:/var/lib/postgresql/data
+
+volumes:
+  furbo-db:

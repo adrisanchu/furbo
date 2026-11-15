@@ -55,7 +55,7 @@ drizzle/                  migraciones SQL
 
 ## Despliegue (Vercel + Neon)
 
-1. Importa el repo en Vercel (plan Hobby).
-2. Instala la integración Neon ↔ Vercel: crea una rama de Neon por cada preview y rellena `DATABASE_URL` / `DATABASE_URL_UNPOOLED`.
-3. Variables en Vercel: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (URL pública), `RESEND_API_KEY`, `EMAIL_FROM` (dominio verificado en Resend).
-4. Aplica migraciones a la rama `main` de Neon: `DATABASE_URL=… pnpm db:migrate`.
+1. Importa el repo en Vercel (plan Hobby). No hace falta tocar comandos: Vercel ejecuta `pnpm vercel-build`, que aplica las migraciones (`drizzle-kit migrate`) y luego `next build`.
+2. Instala la integración Neon ↔ Vercel y conéctala al proyecto de Neon: rellena `DATABASE_URL` / `DATABASE_URL_UNPOOLED` y crea una rama de Neon por cada preview, así cada preview migra su propia rama y producción migra `main`.
+3. Variables en Vercel (Production y Preview): `BETTER_AUTH_SECRET` (distinto del local). Opcionales: `RESEND_API_KEY` y `EMAIL_FROM` (sin ellas, los emails solo aparecen en los logs de Vercel).
+4. `BETTER_AUTH_URL` no hace falta en Vercel: la URL se deduce de `VERCEL_PROJECT_PRODUCTION_URL` (producción) o `VERCEL_BRANCH_URL` / `VERCEL_URL` (previews). Defínela solo con un dominio propio.
