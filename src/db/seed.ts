@@ -9,7 +9,8 @@
  */
 import { config } from "dotenv";
 
-config({ path: [".env.local", ".env"], quiet: true });
+// .env.local (dev branch) wins over .env, which may point at production.
+config({ path: ".env.local", override: true, quiet: true });
 
 import { hashPassword } from "better-auth/crypto";
 import { inArray, like } from "drizzle-orm";
