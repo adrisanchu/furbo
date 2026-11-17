@@ -33,6 +33,17 @@ pnpm dev
 
 > drizzle-kit escribe `"geography(Point, 4326)"` entre comillas. Si una migración nueva toca columnas `geography`, quita las comillas a mano (como en `drizzle/0001_init.sql`).
 
+> `drizzle.config.ts` y el seed cargan `.env.local` con prioridad sobre `.env` (drizzle-kit carga `.env` por su cuenta). Si tienes un `.env` apuntando a producción, los comandos locales siguen usando la rama de `.env.local`; el host aparece al ejecutar `db:migrate`.
+
+## Reglas de partidos (fase 1)
+
+- **Estados:** `abierto` → `cerrado` (al llegar la fecha límite, al llenarse o a mano) → `jugado` (fase 2) | `cancelado`.
+- **Precio:** en vivo mientras está abierto (`pista ÷ apuntados`, redondeado al céntimo hacia arriba). Al cerrar queda fijado por jugador; el sobrante del redondeo va al «bote» del grupo (informativo).
+- **Lista de espera:** solo existe cuando el partido está lleno. Si alguien se borra, sube el primero.
+- **Bajas tardías** (partido cerrado): quien ocupa la plaza libre (el primero de la lista o alguien que se apunte después) hereda la deuda del que se va; si nadie la ocupa, el que se borró sigue debiendo su parte.
+- **Cierre automático:** los partidos vencidos se cierran al abrir la app (cierre perezoso) y con un cron diario (`/api/cron/cerrar-partidos`, el máximo en Vercel Hobby). Si no se llega al mínimo, se avisa por email a los admins.
+- Toda la lógica está en funciones puras (`src/lib/domain`) con tests; el servidor la aplica en una transacción con `SELECT … FOR UPDATE` sobre el partido.
+
 ## Estructura
 
 ```
@@ -40,11 +51,17 @@ src/
   app/
     page.tsx              landing pública
     (auth)/               /entrar, /registro, /recuperar, /restablecer
-    (app)/                zona con sesión: /inicio, /grupos, /partidos, /perfil
+    (auth)/invitacion/    aceptar invitaciones (pública)
+    (onboarding)/         /bienvenida: autoevaluación de nivel
+    (app)/                zona con sesión: /inicio, /grupos, /partidos, /perfil, /crear
     api/auth/[...all]/    Better Auth
+    api/cron/             cierre de partidos vencidos
   components/ui/          shadcn/ui
+  components/app/         piezas de Furbo (tarjetas, avatares, indicador de nivel…)
   db/                     esquema Drizzle (PRD §9), cliente, seed
-  lib/                    auth, sesión (DAL), email, validación Zod
+  lib/domain/             reglas puras con tests: dinero, nivel, partidos, horas (Europe/Madrid)
+  lib/validation/         esquemas Zod compartidos cliente/servidor
+  server/                 consultas, servicio de partidos, autorización, Server Actions, geocodificación
   proxy.ts                redirecciones optimistas según cookie de sesión
 drizzle/                  migraciones SQL
 ```
@@ -57,5 +74,5 @@ drizzle/                  migraciones SQL
 
 1. Importa el repo en Vercel (plan Hobby). No hace falta tocar comandos: Vercel ejecuta `pnpm vercel-build`, que aplica las migraciones (`drizzle-kit migrate`) y luego `next build`.
 2. Instala la integración Neon ↔ Vercel y conéctala al proyecto de Neon: rellena `DATABASE_URL` / `DATABASE_URL_UNPOOLED` y crea una rama de Neon por cada preview, así cada preview migra su propia rama y producción migra `main`.
-3. Variables en Vercel (Production y Preview): `BETTER_AUTH_SECRET` (distinto del local). Opcionales: `RESEND_API_KEY` y `EMAIL_FROM` (sin ellas, los emails solo aparecen en los logs de Vercel).
+3. Variables en Vercel (Production y Preview): `BETTER_AUTH_SECRET` (distinto del local) y `CRON_SECRET` (protege el cron). Opcionales: `RESEND_API_KEY` y `EMAIL_FROM` (sin ellas, los emails solo aparecen en los logs de Vercel) y `NOMINATIM_USER_AGENT` (identificación ante OpenStreetMap, idealmente con una URL o email de contacto).
 4. `BETTER_AUTH_URL` no hace falta en Vercel: la URL se deduce de `VERCEL_PROJECT_PRODUCTION_URL` (producción) o `VERCEL_BRANCH_URL` / `VERCEL_URL` (previews). Defínela solo con un dominio propio.
