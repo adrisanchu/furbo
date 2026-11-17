@@ -104,6 +104,8 @@ export const matches = pgTable(
     maxPlayers: integer("max_players").notNull(),
     minPlayers: integer("min_players").notNull(),
     courtPriceCents: integer("court_price_cents").notNull().default(0),
+    /** Fixed share per player, set when the match closes. */
+    pricePerPlayerCents: integer("price_per_player_cents"),
     signupDeadline: timestamp("signup_deadline", { withTimezone: true }).notNull(),
     status: matchStatusEnum("status").notNull().default("open"),
     /** Set when the deadline passes without reaching min_players (admin must decide). */
@@ -169,6 +171,15 @@ export const ratingHistory = pgTable(
   },
   (t) => [index("rating_history_user_idx").on(t.userId, t.createdAt)],
 );
+
+/** Nominatim results, cached so each address is looked up only once (OSM usage policy). */
+export const geocodeCache = pgTable("geocode_cache", {
+  query: text("query").primaryKey(),
+  /** Null when Nominatim found nothing (also cached). */
+  location: geographyPoint("location"),
+  displayName: text("display_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const selfAssessments = pgTable("self_assessments", {
   id: uuid("id").primaryKey().defaultRandom(),
