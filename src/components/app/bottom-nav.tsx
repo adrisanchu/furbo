@@ -3,7 +3,6 @@
 import { CircleUserRound, House, Plus, Trophy, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -27,15 +26,16 @@ export function BottomNav() {
           if (!tab) {
             return (
               <div key="crear" className="-mt-[26px] flex flex-col items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="Crear"
-                  onClick={() => toast("Crear grupos y partidos llegará muy pronto.")}
+                <Link
+                  href="/crear"
+                  aria-label="Crear grupo o partido"
                   className="flex size-[60px] items-center justify-center rounded-full border-4 border-background bg-primary text-primary-foreground shadow-[0_10px_32px_-6px_rgb(var(--glow-color)/0.6)] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                 >
                   <Plus aria-hidden="true" className="size-[26px]" strokeWidth={2.4} />
-                </button>
-                <span className="text-[11px] font-semibold">Crear</span>
+                </Link>
+                <span aria-hidden="true" className="text-[11px] font-semibold">
+                  Crear
+                </span>
               </div>
             );
           }
