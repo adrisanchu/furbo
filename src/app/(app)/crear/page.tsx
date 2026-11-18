@@ -4,13 +4,18 @@ import Link from "next/link";
 import { GroupAvatar } from "@/components/app/avatars";
 import { SectionTitle } from "@/components/app/page-header";
 import { requireUser } from "@/lib/session";
-import { myGroups } from "@/server/queries";
+import { PLAN_LIMITS, type Plan } from "@/lib/domain/plans";
+import { myGroups, ownedGroupCounts } from "@/server/queries";
 
 export const metadata: Metadata = { title: "Crear" };
 
 export default async function CreatePage() {
   const user = await requireUser();
-  const adminGroups = (await myGroups(user.id)).filter((g) => g.role === "admin");
+  const [groups, owned] = await Promise.all([myGroups(user.id), ownedGroupCounts(user.id)]);
+  const adminGroups = groups.filter((g) => g.role === "admin");
+  const plan: Plan = user.plan === "premium" ? "premium" : "free";
+  const limit = PLAN_LIMITS[plan];
+  const ownedTotal = owned.public + owned.private;
 
   return (
     <>
@@ -54,7 +59,11 @@ export default async function CreatePage() {
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="text-[15px] font-semibold">Crear un grupo</span>
-            <span className="text-[13px] text-muted-foreground">Tu base, tu nivel y tu gente. Serás el admin.</span>
+            <span className="text-[13px] text-muted-foreground">
+              {ownedTotal >= limit.maxOwnedGroups
+                ? "Has llegado al límite de grupos de tu cuenta."
+                : `Serás el propietario · llevas ${ownedTotal} de ${limit.maxOwnedGroups}${plan === "free" ? " (públicos)" : ""}`}
+            </span>
           </span>
           <ChevronRight aria-hidden="true" className="size-5 text-muted-foreground" />
         </Link>

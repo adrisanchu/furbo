@@ -15,7 +15,16 @@ import { cn } from "@/lib/utils";
 import { groupFormSchema, type GroupFormValues } from "@/lib/validation/group";
 import { createGroup, updateGroup } from "@/server/actions/groups";
 
-export function GroupForm({ groupId, defaults }: { groupId?: string; defaults: GroupFormValues }) {
+export function GroupForm({
+  groupId,
+  defaults,
+  canPrivate,
+}: {
+  groupId?: string;
+  defaults: GroupFormValues;
+  /** Private groups need a premium owner (src/lib/domain/plans.ts). */
+  canPrivate: boolean;
+}) {
   const router = useRouter();
   const form = useForm<GroupFormValues>({ resolver: zodResolver(groupFormSchema), defaultValues: defaults });
 
@@ -73,26 +82,38 @@ export function GroupForm({ groupId, defaults }: { groupId?: string; defaults: G
                   ["private", "Privado", "Solo con invitación"],
                   ["public", "Público", "Aparece en el buscador"],
                 ] as const
-              ).map(([value, label, hint]) => (
-                <label
-                  key={value}
-                  className={cn(
-                    "flex cursor-pointer flex-col gap-0.5 rounded-xl border bg-card px-3.5 py-3 has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
-                    field.value === value && "border-primary bg-primary/10",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value={value}
-                    checked={field.value === value}
-                    onChange={() => field.onChange(value)}
-                    className="sr-only"
-                  />
-                  <span className="text-[15px] font-semibold">{label}</span>
-                  <span className="text-[13px] text-muted-foreground">{hint}</span>
-                </label>
-              ))}
+              ).map(([value, label, hint]) => {
+                const locked = value === "private" && !canPrivate;
+                return (
+                  <label
+                    key={value}
+                    className={cn(
+                      "flex cursor-pointer flex-col gap-0.5 rounded-xl border bg-card px-3.5 py-3 has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                      field.value === value && "border-primary bg-primary/10",
+                      locked && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value={value}
+                      checked={field.value === value}
+                      disabled={locked}
+                      onChange={() => field.onChange(value)}
+                      className="sr-only"
+                    />
+                    <span className="flex items-center gap-1.5 text-[15px] font-semibold">
+                      {label}
+                      {locked && (
+                        <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-warning uppercase">
+                          Premium
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[13px] text-muted-foreground">{hint}</span>
+                  </label>
+                );
+              })}
             </div>
           </fieldset>
         )}

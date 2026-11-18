@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { removeMember, setMemberRole } from "@/server/actions/groups";
+import { removeMember, setMemberRole, transferOwnership } from "@/server/actions/groups";
 
 /** Admin menu on a member row: promote/demote, remove from the group. */
 export function MemberActions({
@@ -30,14 +30,18 @@ export function MemberActions({
   userId,
   name,
   role,
+  canTransfer,
 }: {
   groupId: string;
   userId: string;
   name: string;
   role: "admin" | "member";
+  /** Only the owner can hand the group over. */
+  canTransfer: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmTransfer, setConfirmTransfer] = useState(false);
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     startTransition(async () => {
@@ -65,12 +69,36 @@ export function MemberActions({
               Quitar admin
             </DropdownMenuItem>
           )}
+          {canTransfer && (
+            <DropdownMenuItem onSelect={() => setConfirmTransfer(true)}>Pasar la propiedad</DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setConfirmRemove(true)}>
             Expulsar del grupo
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <AlertDialog open={confirmTransfer} onOpenChange={setConfirmTransfer}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Pasar la propiedad a {name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Será el nuevo propietario: podrá borrar el grupo y nadie podrá quitarle de admin. Tú seguirás como admin y
+              el grupo dejará de contar en tu límite de grupos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="lg">Volver</AlertDialogCancel>
+            <AlertDialogAction
+              size="lg"
+              onClick={() => run(() => transferOwnership(groupId, userId), `${name} es ahora el propietario`)}
+            >
+              Pasar la propiedad
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
         <AlertDialogContent>

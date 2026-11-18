@@ -8,6 +8,7 @@ import { MatchCard } from "@/components/app/match-card";
 import { EmptyState, PageHeader, SectionTitle } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { formatLevel } from "@/lib/domain/level";
+import { fullName } from "@/lib/domain/nickname";
 import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { formatEuros } from "@/lib/domain/money";
 import { requireUser } from "@/lib/session";
@@ -28,6 +29,7 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
   if (!group) notFound();
   const isMember = membership?.status === "active";
   const isAdmin = isMember && membership.role === "admin";
+  const isOwner = isMember && group?.ownerId === user.id;
   // Private groups are invisible to non-members (PRD §5.3).
   if (!isMember && group.visibility === "private") notFound();
 
@@ -185,38 +187,60 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
       {isMember && (
         <section aria-labelledby="miembros" className="flex flex-col gap-3">
           <SectionTitle id="miembros">Miembros por nivel</SectionTitle>
+          {isAdmin && members.length > 1 && (
+            <p className="-mt-1 text-[13px] text-muted-foreground">
+              Usa ⋮ para nombrar a otros admins{isOwner ? " o pasar la propiedad del grupo" : ""}.
+            </p>
+          )}
           <ol className="flex flex-col divide-y rounded-2xl border bg-card">
-            {members.map((m, k) => (
-              <li key={m.userId} className="flex items-center gap-3 py-2 pr-1.5 pl-4">
-                <span className="w-5 text-right text-[13px] text-muted-foreground tabular-nums">{k + 1}</span>
-                <PlayerAvatar id={m.userId} name={m.name} highlight={m.userId === user.id} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex items-center gap-1.5">
-                    <span className="truncate text-[15px] font-medium">{m.userId === user.id ? "Tú" : m.name}</span>
-                    {m.role === "admin" && (
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-muted-foreground uppercase">
-                        Admin
-                      </span>
-                    )}
+            {members.map((m, k) => {
+              const memberIsOwner = m.userId === group.ownerId;
+              const isMe = m.userId === user.id;
+              return (
+                <li key={m.userId} className="flex items-center gap-3 py-2 pr-1.5 pl-4">
+                  <span className="w-5 text-right text-[13px] text-muted-foreground tabular-nums">{k + 1}</span>
+                  <PlayerAvatar id={m.userId} name={fullName(m)} highlight={isMe} />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-[15px] font-medium">{isMe ? "Tú" : fullName(m)}</span>
+                      {(memberIsOwner || m.role === "admin") && (
+                        <span className="flex-none rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-muted-foreground uppercase">
+                          {memberIsOwner ? "Propietario" : "Admin"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="truncate text-[13px] text-muted-foreground">
+                      {m.nickname && `@${m.nickname} · `}
+                      {POSITION_LABEL[m.preferredPosition]}
+                      {m.ratingProvisional && " · provisional"}
+                    </span>
                   </span>
-                  <span className="text-[13px] text-muted-foreground">
-                    {POSITION_LABEL[m.preferredPosition]}
-                    {m.ratingProvisional && " · provisional"}
-                  </span>
-                </span>
-                <span className="font-display text-xl font-bold tabular-nums">{formatLevel(m.rating)}</span>
-                {isAdmin && m.userId !== user.id ? (
-                  <MemberActions groupId={id} userId={m.userId} name={m.name} role={m.role} />
-                ) : (
-                  <span className="w-11" />
-                )}
-              </li>
-            ))}
+                  <span className="font-display text-xl font-bold tabular-nums">{formatLevel(m.rating)}</span>
+                  {isAdmin && !isMe && !memberIsOwner ? (
+                    <MemberActions
+                      groupId={id}
+                      userId={m.userId}
+                      name={fullName(m)}
+                      role={m.role}
+                      canTransfer={isOwner}
+                    />
+                  ) : (
+                    <span className="w-11" />
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}
 
-      {isMember && (
+      {isOwner && (
+        <p className="text-center text-[13px] text-muted-foreground">
+          Eres el propietario. Para salir, pasa antes la propiedad a otro miembro.
+        </p>
+      )}
+
+      {isMember && !isOwner && (
         <ActionButton
           variant="ghost"
           size="lg"

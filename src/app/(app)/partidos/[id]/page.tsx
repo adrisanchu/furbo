@@ -8,6 +8,7 @@ import { PageHeader, SectionTitle } from "@/components/app/page-header";
 import { SpotsBar, spotsLabel } from "@/components/app/spots-bar";
 import { Button } from "@/components/ui/button";
 import { formatLevel, roundRating } from "@/lib/domain/level";
+import { fullName, shortName } from "@/lib/domain/nickname";
 import { FORMAT_LABEL, isFrozen, priceIfJoining, STATUS_LABEL } from "@/lib/domain/matches";
 import { costPerPlayerCents, formatEuros } from "@/lib/domain/money";
 import { formatDateTime, formatLongDate, formatRelativeDay, formatTime } from "@/lib/domain/time";
@@ -231,7 +232,7 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
               <li key={s.userId} className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5">
                 <PlayerAvatar id={s.userId} name={s.name} highlight={s.userId === user.id} />
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm font-medium">{s.userId === user.id ? "Tú" : s.name.split(" ")[0]}</span>
+                  <span className="truncate text-sm font-medium">{s.userId === user.id ? "Tú" : shortName(s)}</span>
                   <span className="text-xs text-muted-foreground">{formatLevel(s.rating)}</span>
                 </span>
               </li>
@@ -254,7 +255,7 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
               <li key={s.userId} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="w-5 font-display text-lg font-bold">{s.positionInQueue}</span>
                 <PlayerAvatar id={s.userId} name={s.name} highlight={s.userId === user.id} />
-                <span className="flex-1 truncate text-sm font-medium">{s.userId === user.id ? "Tú" : s.name}</span>
+                <span className="flex-1 truncate text-sm font-medium">{s.userId === user.id ? "Tú" : fullName(s)}</span>
               </li>
             ))}
           </ol>
@@ -277,13 +278,13 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
             {payments.map((p) => (
               <li key={p.userId} className="flex items-center gap-3 px-4 py-3">
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-[15px] font-medium">{p.name}</span>
+                  <span className="truncate text-[15px] font-medium">{fullName(p)}</span>
                   <span className="text-[13px] text-muted-foreground">
                     {formatEuros(p.amountDueCents!)}
                     {p.status === "withdrawn" && " · se borró tarde"}
                   </span>
                 </span>
-                <PaymentToggle matchId={id} userId={p.userId} name={p.name} paid={p.paid} />
+                <PaymentToggle matchId={id} userId={p.userId} name={fullName(p)} paid={p.paid} />
               </li>
             ))}
           </ul>
