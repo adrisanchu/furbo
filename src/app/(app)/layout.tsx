@@ -7,8 +7,8 @@ import { closeDueMatches, notifyBelowMinimum } from "@/server/match-service";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
-  // New players set their level first (PRD §5.1).
-  if (user.rating == null) redirect("/bienvenida");
+  // New players complete their profile (nickname) and level first (PRD §5.1).
+  if (!user.nickname || user.rating == null) redirect("/bienvenida");
 
   // Lazy closing: matches past their deadline close on the next visit, so
   // the app doesn't depend on the (daily, on Hobby) cron for correctness.
