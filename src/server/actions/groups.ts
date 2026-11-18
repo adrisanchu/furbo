@@ -4,8 +4,9 @@ import { randomBytes } from "node:crypto";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { db } from "@/db";
-import { groupInvites, groupMembers, groups, matches, matchSignups } from "@/db/schema";
+import { groupInvites, groupMembers, groups, matches, matchSignups, users } from "@/db/schema";
 import { absoluteUrl } from "@/lib/app-url";
+import { checkGroupQuota, checkVisibilityChange, quotaMessage, type Plan } from "@/lib/domain/plans";
 import { actionEmail, sendEmail } from "@/lib/email";
 import { requireUser } from "@/lib/session";
 import {
@@ -16,19 +17,33 @@ import {
   type GroupFormValues,
 } from "@/lib/validation/group";
 import { ActionError, idSchema, runAction } from "../action";
-import { requireAdmin, requireMember } from "../authz";
+import { requireAdmin, requireMember, requireOwner } from "../authz";
 import { geocode } from "../geocode";
 import { leaveMatch } from "../match-service";
+import { ownedGroupCounts } from "../queries";
+
+function planOf(value: string | null | undefined): Plan {
+  return value === "premium" ? "premium" : "free";
+}
+
+async function planOfUser(userId: string): Promise<Plan> {
+  const [row] = await db.select({ plan: users.plan }).from(users).where(eq(users.id, userId));
+  return planOf(row?.plan);
+}
 
 export async function createGroup(input: GroupFormValues) {
   return runAction(async () => {
     const user = await requireUser();
     const values = toGroupValues(groupFormSchema.parse(input));
+    // Plan quota: free users own up to 2 public groups; private groups are premium.
+    const plan = planOf(user.plan);
+    const quota = checkGroupQuota(plan, await ownedGroupCounts(user.id), values.visibility);
+    if (!quota.ok) throw new ActionError(quotaMessage(quota.reason, plan));
     const geo = await geocode(values.baseLabel);
     const id = await db.transaction(async (tx) => {
       const [group] = await tx
         .insert(groups)
-        .values({ ...values, baseLocation: geo?.location ?? null, createdBy: user.id })
+        .values({ ...values, baseLocation: geo?.location ?? null, createdBy: user.id, ownerId: user.id })
         .returning({ id: groups.id });
       await tx.insert(groupMembers).values({ groupId: group!.id, userId: user.id, role: "admin" });
       return group!.id;
@@ -42,7 +57,19 @@ export async function updateGroup(groupId: string, input: GroupFormValues) {
     idSchema.parse(groupId);
     await requireAdmin(groupId);
     const values = toGroupValues(groupFormSchema.parse(input));
-    const [current] = await db.select({ baseLabel: groups.baseLabel }).from(groups).where(eq(groups.id, groupId));
+    const [current] = await db
+      .select({ baseLabel: groups.baseLabel, visibility: groups.visibility, ownerId: groups.ownerId })
+      .from(groups)
+      .where(eq(groups.id, groupId));
+    if (!current) throw new ActionError("Ese grupo no existe.");
+    if (current.visibility !== values.visibility) {
+      // Making a group private depends on the OWNER's plan, whoever edits it.
+      const ownerPlan = await planOfUser(current.ownerId);
+      const change = checkVisibilityChange(ownerPlan, current.visibility, values.visibility);
+      if (!change.ok) {
+        throw new ActionError("Solo los grupos de un propietario con Furbo Premium pueden ser privados.");
+      }
+    }
     let located = true;
     const update: Partial<typeof groups.$inferInsert> = values;
     if (current?.baseLabel !== values.baseLabel) {
@@ -59,7 +86,7 @@ export async function updateGroup(groupId: string, input: GroupFormValues) {
 export async function deleteGroup(groupId: string) {
   return runAction(async () => {
     idSchema.parse(groupId);
-    await requireAdmin(groupId);
+    await requireOwner(groupId);
     await db.delete(groups).where(eq(groups.id, groupId));
     return null;
   });
@@ -70,6 +97,11 @@ async function activeAdminCount(groupId: string) {
     groupMembers,
     and(eq(groupMembers.groupId, groupId), eq(groupMembers.role, "admin"), eq(groupMembers.status, "active")),
   );
+}
+
+async function isOwner(groupId: string, userId: string) {
+  const [group] = await db.select({ ownerId: groups.ownerId }).from(groups).where(eq(groups.id, groupId));
+  return group?.ownerId === userId;
 }
 
 /** Takes a member off the group's upcoming matches (frees spots, promotes the waitlist). */
@@ -121,6 +153,9 @@ export async function leaveGroup(groupId: string) {
   return runAction(async () => {
     idSchema.parse(groupId);
     const { user, membership } = await requireMember(groupId);
+    if (await isOwner(groupId, user.id)) {
+      throw new ActionError("Eres el propietario: pasa la propiedad a otro miembro o borra el grupo antes de salir.");
+    }
     if (membership.role === "admin" && (await activeAdminCount(groupId)) <= 1) {
       const others = await db.$count(
         groupMembers,
@@ -151,6 +186,9 @@ export async function setMemberRole(groupId: string, userId: string, role: "admi
       .from(groupMembers)
       .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
     if (!target || target.status !== "active") throw new ActionError("Esa persona no es miembro del grupo.");
+    if (role === "member" && (await isOwner(groupId, userId))) {
+      throw new ActionError("El propietario siempre es admin.");
+    }
     if (role === "member" && target.role === "admin" && (await activeAdminCount(groupId)) <= 1) {
       throw new ActionError("El grupo necesita al menos un admin.");
     }
@@ -169,11 +207,50 @@ export async function removeMember(groupId: string, userId: string) {
     idSchema.parse(userId);
     const { user } = await requireAdmin(groupId);
     if (user.id === userId) throw new ActionError("Para salir tú, usa «Salir del grupo».");
+    if (await isOwner(groupId, userId)) throw new ActionError("No se puede expulsar al propietario del grupo.");
     await withdrawFromUpcoming(groupId, userId);
     await db
       .update(groupMembers)
       .set({ status: "banned", role: "member" })
       .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+    refresh();
+    return null;
+  });
+}
+
+/**
+ * Hands the group over to another active member. The new owner becomes admin
+ * (if not already) and the group must fit in THEIR plan quota.
+ */
+export async function transferOwnership(groupId: string, userId: string) {
+  return runAction(async () => {
+    idSchema.parse(groupId);
+    idSchema.parse(userId);
+    const { user } = await requireOwner(groupId);
+    if (user.id === userId) throw new ActionError("Ya eres el propietario.");
+    const [target] = await db
+      .select({ status: groupMembers.status, plan: users.plan, name: users.name })
+      .from(groupMembers)
+      .innerJoin(users, eq(users.id, groupMembers.userId))
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+    if (!target || target.status !== "active") throw new ActionError("Esa persona no es miembro del grupo.");
+    const [group] = await db.select({ visibility: groups.visibility }).from(groups).where(eq(groups.id, groupId));
+    const targetPlan = planOf(target.plan);
+    const quota = checkGroupQuota(targetPlan, await ownedGroupCounts(userId), group!.visibility);
+    if (!quota.ok) {
+      throw new ActionError(
+        quota.reason === "private-needs-premium"
+          ? `${target.name} no tiene Furbo Premium y este grupo es privado.`
+          : `${target.name} ya tiene el máximo de grupos de su cuenta.`,
+      );
+    }
+    await db.transaction(async (tx) => {
+      await tx.update(groups).set({ ownerId: userId }).where(eq(groups.id, groupId));
+      await tx
+        .update(groupMembers)
+        .set({ role: "admin" })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+    });
     refresh();
     return null;
   });

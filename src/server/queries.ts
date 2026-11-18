@@ -27,6 +27,7 @@ const groupLevel = sql<number>`coalesce((
 
 const groupCard = {
   id: groups.id,
+  ownerId: groups.ownerId,
   name: groups.name,
   description: groups.description,
   visibility: groups.visibility,
@@ -37,6 +38,19 @@ const groupCard = {
 };
 
 export type GroupCard = Awaited<ReturnType<typeof myGroups>>[number];
+
+/** Groups a user owns, by visibility (for the plan quota). */
+export async function ownedGroupCounts(userId: string) {
+  const rows = await db
+    .select({ visibility: groups.visibility, n: sql<number>`count(*)::int` })
+    .from(groups)
+    .where(eq(groups.ownerId, userId))
+    .groupBy(groups.visibility);
+  return {
+    public: rows.find((r) => r.visibility === "public")?.n ?? 0,
+    private: rows.find((r) => r.visibility === "private")?.n ?? 0,
+  };
+}
 
 export async function myGroups(userId: string) {
   return db
@@ -76,6 +90,7 @@ export async function groupById(groupId: string) {
       defaultCourtPriceCents: groups.defaultCourtPriceCents,
       whatsappUrl: groups.whatsappUrl,
       createdAt: groups.createdAt,
+      ownerPlan: sql<"free" | "premium">`(select u.plan from users u where u.id = ${groups.ownerId})`,
     })
     .from(groups)
     .where(eq(groups.id, groupId));
@@ -87,6 +102,9 @@ export async function groupMembersList(groupId: string) {
     .select({
       userId: users.id,
       name: users.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      nickname: users.nickname,
       rating: users.rating,
       ratingProvisional: users.ratingProvisional,
       preferredPosition: users.preferredPosition,
@@ -202,6 +220,9 @@ export async function matchSignupsList(matchId: string) {
     .select({
       userId: users.id,
       name: users.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      nickname: users.nickname,
       rating: users.rating,
       ratingProvisional: users.ratingProvisional,
       preferredPosition: users.preferredPosition,
