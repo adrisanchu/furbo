@@ -43,10 +43,15 @@ export const groups = pgTable(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
+    /** The owner (initially the creator): can't be demoted or removed by admins. */
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("groups_base_location_gist").using("gist", t.baseLocation),
+    index("groups_owner_idx").on(t.ownerId),
     check("groups_reference_rating_range", sql`${t.referenceRating} between 1 and 10`),
   ],
 );

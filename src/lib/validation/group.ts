@@ -33,7 +33,7 @@ export type GroupFormValues = z.infer<typeof groupFormSchema>;
 export const EMPTY_GROUP: GroupFormValues = {
   name: "",
   description: "",
-  visibility: "private",
+  visibility: "public",
   baseLabel: "",
   referenceRating: "5.0",
   defaultFormat: "f7",

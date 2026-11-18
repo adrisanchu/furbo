@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, index, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Better Auth core tables (users, sessions, accounts, verifications) plus the
@@ -8,25 +8,38 @@ import { boolean, doublePrecision, index, integer, pgEnum, pgTable, text, timest
 
 export const positionEnum = pgEnum("position", ["goalkeeper", "defender", "midfielder", "forward", "any"]);
 export const themeEnum = pgEnum("theme", ["system", "dark", "light", "gamer"]);
+/** Set by hand until payments exist (see src/lib/domain/plans.ts). */
+export const planEnum = pgEnum("plan", ["free", "premium"]);
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  image: text("image"),
-  preferredPosition: positionEnum("preferred_position").notNull().default("any"),
-  /** 1.0–10.0. Null until the self-assessment is done. */
-  rating: doublePrecision("rating"),
-  ratingProvisional: boolean("rating_provisional").notNull().default(true),
-  matchesPlayed: integer("matches_played").notNull().default(0),
-  theme: themeEnum("theme").notNull().default("system"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Display name required by Better Auth; kept as "firstName lastName". */
+    name: text("name").notNull(),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    /** Unique handle (lowercase), e.g. "alexm". Null until the profile step is done. */
+    nickname: text("nickname"),
+    nicknameChangedAt: timestamp("nickname_changed_at", { withTimezone: true }),
+    plan: planEnum("plan").notNull().default("free"),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
+    preferredPosition: positionEnum("preferred_position").notNull().default("any"),
+    /** 1.0–10.0. Null until the self-assessment is done. */
+    rating: doublePrecision("rating"),
+    ratingProvisional: boolean("rating_provisional").notNull().default(true),
+    matchesPlayed: integer("matches_played").notNull().default(0),
+    theme: themeEnum("theme").notNull().default("system"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("users_nickname_unique").on(t.nickname)],
+);
 
 export const sessions = pgTable(
   "sessions",

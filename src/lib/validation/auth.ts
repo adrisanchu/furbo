@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { identitySchema } from "./profile";
 
 /** Shared client/server validation for auth forms (PRD §7: Zod as single source). */
 
@@ -9,8 +10,7 @@ const password = z
   .min(8, "Mínimo 8 caracteres")
   .max(128, "Máximo 128 caracteres");
 
-export const signUpSchema = z.object({
-  name: z.string().trim().min(2, "¿Cómo te llaman en el campo?").max(40, "Máximo 40 caracteres"),
+export const signUpSchema = identitySchema.extend({
   email,
   password,
 });
@@ -32,7 +32,7 @@ export const resetPasswordSchema = z
     path: ["confirm"],
   });
 
-export type SignUpInput = z.infer<typeof signUpSchema>;
+export type SignUpInput = z.input<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
 export type EmailOnlyInput = z.infer<typeof emailOnlySchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
@@ -44,10 +44,15 @@ const AUTH_ERRORS: Record<string, string> = {
   INVALID_TOKEN: "El enlace no es válido o ha caducado. Pide uno nuevo.",
   PASSWORD_TOO_SHORT: "La contraseña es demasiado corta.",
   TOO_MANY_REQUESTS: "Demasiados intentos. Espera un momento.",
+  NICKNAME_TAKEN: "Ese apodo ya está cogido. Prueba con otro.",
 };
 
 /** Maps Better Auth error codes to Spanish copy. */
-export function authErrorMessage(error: { code?: string; status?: number } | null | undefined): string {
+export function authErrorMessage(
+  error: { code?: string; status?: number; message?: string } | null | undefined,
+): string {
   if (error?.status === 429) return AUTH_ERRORS.TOO_MANY_REQUESTS;
+  // Our own sign-up hook already sends Spanish copy.
+  if (error?.code === "INVALID_NICKNAME" && error.message) return error.message;
   return (error?.code && AUTH_ERRORS[error.code]) || "Algo ha fallado. Inténtalo de nuevo.";
 }
