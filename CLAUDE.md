@@ -45,6 +45,9 @@ Layered, with dependencies pointing inward:
 
 ### Cross-cutting
 
+- **Identity:** users have `firstName`, `lastName` and a unique lowercase `nickname` (`src/lib/domain/nickname.ts`). Sign-up sends them to Better Auth, whose `databaseHooks.user.create.before` validates them; `update.before` rejects identity changes through Better Auth's `/update-user`, so they only change via `updateProfile` (30-day nickname rule). Users without a nickname (magic link) are sent to `/bienvenida` to complete it.
+- **Ownership & plans:** `groups.owner_id` is the owner (always admin, can't be demoted or removed, only one who deletes or transfers — `requireOwner`). Group creation is limited by `users.plan` via `checkGroupQuota` (`src/lib/domain/plans.ts`): free = 2 public groups, premium = 10 of any kind.
+
 - **Auth:** Better Auth (`src/lib/auth.ts`, client in `auth-client.ts`, handler at `api/auth/[...all]`). `src/proxy.ts` (Next 16's replacement for middleware) only checks the cookie exists and redirects to `/entrar?next=…`; the real check is `requireUser()` / `getSession()` in `src/lib/session.ts`, which every page and action must call. Signed-in users are bounced away from auth pages in the auth layout, not in the proxy (stale cookies would loop).
 - **Match auto-closing:** overdue open matches are closed lazily in `(app)/layout.tsx` on every signed-in request and by the daily Vercel cron `/api/cron/cerrar-partidos` (`vercel.json`, guarded by `CRON_SECRET`). Both use `closeDueMatches()`.
 - **DB client:** `src/db/client.ts` picks `@neondatabase/serverless` for `*.neon.tech` URLs (WebSockets, needed for interactive transactions) and `pg` otherwise; both are typed as `NodePgDatabase`. Schema lives in `src/db/schema/` (`auth.ts` = Better Auth tables, `app.ts` = domain tables); PostGIS points use the custom type in `src/db/geography.ts`.

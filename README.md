@@ -18,7 +18,7 @@ pnpm dev
 
 - **Base de datos:** usa la cadena de conexión de la rama `dev` de Neon. Sin Neon, `docker compose up -d` levanta Postgres + PostGIS en `localhost:5442` (ver `.env.example`).
 - **Email:** sin `RESEND_API_KEY`, los magic links y los correos de recuperación se imprimen en la consola del servidor.
-- **Usuarios de prueba:** el seed crea 8 jugadores `@furbo.test` (p. ej. `alex@furbo.test`) con la contraseña `furbo-dev-1234`, dos grupos y un partido abierto. Solo borra y recrea sus propios datos.
+- **Usuarios de prueba:** el seed crea 8 jugadores `@furbo.test` con la contraseña `furbo-dev-1234`, dos grupos y un partido abierto. `alex@furbo.test` es Premium y propietario del grupo privado; `javi@furbo.test` es gratuito y propietario del público. Solo borra y recrea sus propios datos.
 
 ## Scripts
 
@@ -34,6 +34,12 @@ pnpm dev
 > drizzle-kit escribe `"geography(Point, 4326)"` entre comillas. Si una migración nueva toca columnas `geography`, quita las comillas a mano (como en `drizzle/0001_init.sql`).
 
 > `drizzle.config.ts` y el seed cargan `.env.local` con prioridad sobre `.env` (drizzle-kit carga `.env` por su cuenta). Si tienes un `.env` apuntando a producción, los comandos locales siguen usando la rama de `.env.local`; el host aparece al ejecutar `db:migrate`.
+
+## Jugadores, grupos y planes
+
+- **Identidad:** cada jugador tiene nombre, apellidos y un **apodo único** (`@alexm`): 3–20 caracteres, minúsculas, números, `_` y `.`, sin distinguir mayúsculas. El primer cambio es libre; después, uno cada 30 días. Los apellidos solo los ven los miembros de tus grupos. Quien entra con magic link completa estos datos en `/bienvenida`.
+- **Roles en un grupo:** el **propietario** (quien lo crea) es siempre admin, no se le puede quitar ni expulsar, es el único que puede borrar el grupo y puede pasar la propiedad a otro miembro. Los **admins** gestionan partidos, invitaciones y miembros, y pueden nombrar a otros admins.
+- **Planes** (`users.plan`, se cambia a mano hasta que haya pagos): la cuenta **gratuita** puede ser propietaria de hasta 2 grupos, siempre públicos; **Premium** hasta 10, públicos o privados. Cuenta lo que posees ahora: borrar o pasar un grupo libera el hueco. Las reglas están en `src/lib/domain/plans.ts`.
 
 ## Reglas de partidos (fase 1)
 
