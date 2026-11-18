@@ -2,14 +2,24 @@ import { describe, expect, it } from "vitest";
 import { authErrorMessage, resetPasswordSchema, signUpSchema } from "./auth";
 
 describe("auth validation", () => {
-  it("normalises the email on sign up", () => {
-    const parsed = signUpSchema.parse({ name: " Álex ", email: " Alex@Ejemplo.COM ", password: "12345678" });
-    expect(parsed).toEqual({ name: "Álex", email: "alex@ejemplo.com", password: "12345678" });
+  const identity = { firstName: " Álex ", lastName: " Martín ", nickname: " @AlexM " };
+
+  it("normalises email, names and nickname on sign up", () => {
+    const parsed = signUpSchema.parse({ ...identity, email: " Alex@Ejemplo.COM ", password: "12345678" });
+    expect(parsed).toEqual({
+      firstName: "Álex",
+      lastName: "Martín",
+      nickname: "alexm",
+      email: "alex@ejemplo.com",
+      password: "12345678",
+    });
   });
 
-  it("requires 8+ character passwords", () => {
-    const result = signUpSchema.safeParse({ name: "Álex", email: "a@b.es", password: "1234567" });
-    expect(result.success).toBe(false);
+  it("requires 8+ character passwords and a valid nickname", () => {
+    expect(signUpSchema.safeParse({ ...identity, email: "a@b.es", password: "1234567" }).success).toBe(false);
+    expect(signUpSchema.safeParse({ ...identity, nickname: "a b", email: "a@b.es", password: "12345678" }).success).toBe(
+      false,
+    );
   });
 
   it("checks that both reset passwords match", () => {
@@ -22,5 +32,6 @@ describe("auth validation", () => {
     expect(authErrorMessage({ code: "INVALID_EMAIL_OR_PASSWORD" })).toBe("Email o contraseña incorrectos.");
     expect(authErrorMessage({ status: 429 })).toMatch(/Demasiados intentos/);
     expect(authErrorMessage({ code: "SOMETHING_NEW" })).toMatch(/Algo ha fallado/);
+    expect(authErrorMessage({ code: "NICKNAME_TAKEN" })).toMatch(/cogido/);
   });
 });

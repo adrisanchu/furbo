@@ -9,25 +9,27 @@
  */
 import { config } from "dotenv";
 
-config({ path: [".env.local", ".env"], quiet: true });
+// .env.local (dev branch) wins over .env, which may point at production.
+config({ path: ".env.local", override: true, quiet: true });
 
 import { hashPassword } from "better-auth/crypto";
-import { inArray, like } from "drizzle-orm";
+import { inArray, like, or } from "drizzle-orm";
 import { createDb } from "./client";
 import { accounts, groupMembers, groups, matches, matchSignups, ratingHistory, users } from "./schema";
 
 const SEED_DOMAIN = "@furbo.test";
 const SEED_PASSWORD = "furbo-dev-1234";
 
+// Álex is premium (owns the private group); everyone else is on the free plan.
 const players = [
-  { name: "Álex Martín", email: `alex${SEED_DOMAIN}`, rating: 6.4, position: "midfielder" },
-  { name: "Javi Velasco", email: `javi${SEED_DOMAIN}`, rating: 6.1, position: "forward" },
-  { name: "Lucía Campos", email: `lucia${SEED_DOMAIN}`, rating: 5.8, position: "defender" },
-  { name: "Marta Ruiz", email: `marta${SEED_DOMAIN}`, rating: 5.2, position: "any" },
-  { name: "Dani Navarro", email: `dani${SEED_DOMAIN}`, rating: 6.9, position: "goalkeeper" },
-  { name: "Sergio Ortega", email: `sergio${SEED_DOMAIN}`, rating: 4.7, position: "defender" },
-  { name: "Paula Gil", email: `paula${SEED_DOMAIN}`, rating: 5.5, position: "midfielder" },
-  { name: "Hugo Serrano", email: `hugo${SEED_DOMAIN}`, rating: 7.2, position: "forward" },
+  { first: "Álex", last: "Martín López", nick: "alexm", email: `alex${SEED_DOMAIN}`, rating: 6.4, position: "midfielder", plan: "premium" },
+  { first: "Javi", last: "Velasco", nick: "javivel", email: `javi${SEED_DOMAIN}`, rating: 6.1, position: "forward", plan: "free" },
+  { first: "Lucía", last: "Campos", nick: "lucia.c", email: `lucia${SEED_DOMAIN}`, rating: 5.8, position: "defender", plan: "free" },
+  { first: "Marta", last: "Ruiz", nick: "martaruiz", email: `marta${SEED_DOMAIN}`, rating: 5.2, position: "any", plan: "free" },
+  { first: "Dani", last: "Navarro", nick: "dani_gk", email: `dani${SEED_DOMAIN}`, rating: 6.9, position: "goalkeeper", plan: "free" },
+  { first: "Sergio", last: "Ortega", nick: "sergio.o", email: `sergio${SEED_DOMAIN}`, rating: 4.7, position: "defender", plan: "free" },
+  { first: "Paula", last: "Gil", nick: "paulagil", email: `paula${SEED_DOMAIN}`, rating: 5.5, position: "midfielder", plan: "free" },
+  { first: "Hugo", last: "Serrano", nick: "hugo9", email: `hugo${SEED_DOMAIN}`, rating: 7.2, position: "forward", plan: "free" },
 ] as const;
 
 function daysFromNow(days: number, hour: number, minute = 0) {
@@ -43,11 +45,11 @@ async function main() {
   }
   const db = createDb(process.env.DATABASE_URL);
 
-  // Clean previous seed data. Groups first (created_by has no cascade).
+  // Clean previous seed data. Groups first (created_by/owner_id have no cascade).
   const old = await db.select({ id: users.id }).from(users).where(like(users.email, `%${SEED_DOMAIN}`));
   if (old.length) {
     const ids = old.map((u) => u.id);
-    await db.delete(groups).where(inArray(groups.createdBy, ids));
+    await db.delete(groups).where(or(inArray(groups.createdBy, ids), inArray(groups.ownerId, ids)));
     await db.delete(users).where(inArray(users.id, ids));
   }
 
@@ -56,7 +58,11 @@ async function main() {
     .insert(users)
     .values(
       players.map((p) => ({
-        name: p.name,
+        name: `${p.first} ${p.last}`,
+        firstName: p.first,
+        lastName: p.last,
+        nickname: p.nick,
+        plan: p.plan,
         email: p.email,
         emailVerified: true,
         rating: p.rating,
@@ -89,6 +95,7 @@ async function main() {
         defaultFormat: "f7",
         defaultCourtPriceCents: 7000,
         createdBy: alex.id,
+        ownerId: alex.id,
       },
       {
         name: "Pachanga del domingo",
@@ -100,6 +107,7 @@ async function main() {
         defaultFormat: "f5",
         defaultCourtPriceCents: 5000,
         createdBy: javi.id,
+        ownerId: javi.id,
       },
     ])
     .returning({ id: groups.id });
@@ -136,7 +144,8 @@ async function main() {
   );
 
   console.info(
-    `Seeded ${inserted.length} players, 2 groups and 1 open match.\nLog in as ${alex.email} / ${SEED_PASSWORD}`,
+    `Seeded ${inserted.length} players, 2 groups and 1 open match.\n` +
+      `Log in as ${alex.email} (premium) or ${javi.email} (free) / ${SEED_PASSWORD}`,
   );
   process.exit(0);
 }
