@@ -204,6 +204,38 @@ export const matchPlayers = pgTable(
   ],
 );
 
+/**
+ * Ratings players give each other after a match (0–10 in half points,
+ * stored as halves 0–20). One rating per (match, rater, rated); changing it
+ * overwrites. Phase 2b: anyone in the group can rate anyone who played.
+ */
+export const playerRatings = pgTable(
+  "player_ratings",
+  {
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    raterId: uuid("rater_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ratedId: uuid("rated_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scoreHalves: integer("score_halves").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.raterId, t.ratedId] }),
+    index("player_ratings_match_rated_idx").on(t.matchId, t.ratedId),
+    index("player_ratings_rated_idx").on(t.ratedId),
+    check("player_ratings_score_range", sql`${t.scoreHalves} between 0 and 20`),
+  ],
+);
+
 export const ratingHistory = pgTable(
   "rating_history",
   {

@@ -36,6 +36,13 @@
       "when": 1795217334912,
       "tag": "0004_match_report",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795269615067,
+      "tag": "0005_player_ratings",
+      "breakpoints": true
     }
   ]
 }

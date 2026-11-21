@@ -17,7 +17,17 @@ import { eq, inArray, like, or } from "drizzle-orm";
 import { computeLevelChanges } from "../lib/domain/elo";
 import { costPerPlayerCents } from "../lib/domain/money";
 import { createDb } from "./client";
-import { accounts, groupMembers, groups, matches, matchPlayers, matchSignups, ratingHistory, users } from "./schema";
+import {
+  accounts,
+  groupMembers,
+  groups,
+  matches,
+  matchPlayers,
+  matchSignups,
+  playerRatings,
+  ratingHistory,
+  users,
+} from "./schema";
 
 const SEED_DOMAIN = "@furbo.test";
 const SEED_PASSWORD = "furbo-dev-1234";
@@ -206,6 +216,29 @@ async function main() {
   }
   await db.insert(ratingHistory).values(
     changes.map((c) => ({ userId: c.userId, matchId: lastWeek.id, ratingBefore: c.before, ratingAfter: c.after, delta: c.delta })),
+  );
+
+  // Everyone rates everyone else (Phase 2b), around how each one played.
+  const baseScore: Record<string, number> = {
+    [alex.id]: 8,
+    [dani!.id]: 8.5,
+    [lucia!.id]: 7,
+    [paula!.id]: 6.5,
+    [javi.id]: 6,
+    [hugo!.id]: 7.5,
+    [marta!.id]: 6.5,
+    [sergio!.id]: 5.5,
+  };
+  const ids = lineup.map((l) => l.userId);
+  await db.insert(playerRatings).values(
+    ids.flatMap((raterId, i) =>
+      ids
+        .filter((ratedId) => ratedId !== raterId)
+        .map((ratedId, j) => {
+          const score = Math.min(10, Math.max(0, baseScore[ratedId]! + (((i + j) % 3) - 1) * 0.5));
+          return { matchId: lastWeek.id, raterId, ratedId, scoreHalves: Math.round(score * 2) };
+        }),
+    ),
   );
 
   // Yesterday's match: closed, no report yet → admins get "Falta el acta".
