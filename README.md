@@ -50,6 +50,15 @@ pnpm dev
 - **Cierre automático:** los partidos vencidos se cierran al abrir la app (cierre perezoso) y con un cron diario (`/api/cron/cerrar-partidos`, el máximo en Vercel Hobby). Si no se llega al mínimo, se avisa por email a los admins.
 - Toda la lógica está en funciones puras (`src/lib/domain`) con tests; el servidor la aplica en una transacción con `SELECT … FOR UPDATE` sobre el partido.
 
+## Actas, estadísticas y nivel (fase 2a)
+
+- **Acta del partido** (`/partidos/[id]/acta`, solo admins): antes del partido se guarda la **alineación prevista** (equipo A/B y portero); después, el **marcador** y las estadísticas de cada jugador: goles, asistencias, paradas, goles en propia, **golazos** (subconjunto de los goles) y **paradones** (subconjunto de las paradas). Se guardan como contadores por jugador y partido (`match_players`).
+- Quien no está en la alineación no cuenta (no presentados). Un admin puede añadir a un miembro que jugó sin apuntarse. Apuntarse/pagar (`match_signups`) y jugar (`match_players`) son cosas distintas.
+- Si los goles apuntados no cuadran con el marcador, o falta portero, se muestra un **aviso**; no impide guardar.
+- **Nivel:** al guardar el acta el partido pasa a `jugado` y se aplica el Elo por equipos del PRD §5.5 (`src/lib/domain/elo.ts`), se guarda en `rating_history` y suma `matches_played` (provisional hasta 5 partidos).
+- **Corregir un acta** deshace los cambios de nivel de **ese** partido y vuelve a aplicarlos con los datos nuevos (no recalcula los partidos posteriores).
+- Los admins ven «Falta el acta» en Inicio para los partidos ya empezados sin resultado. El perfil muestra la evolución del nivel y los últimos partidos.
+
 ## Estructura
 
 ```

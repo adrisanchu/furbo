@@ -40,6 +40,7 @@ Layered, with dependencies pointing inward:
 3. **`src/server/`** (all `server-only`):
    - `actions/*.ts` — `"use server"` mutations. Every action wraps its body in `runAction()` (`server/action.ts`), which returns `ActionResult<T>` = `{ ok: true, data } | { ok: false, error }`. Throw `ActionError` for user-facing Spanish messages; ZodErrors become their first issue message; anything else is logged and genericised. Validate ids with `idSchema`, authorise with `requireMember` / `requireAdmin` (`server/authz.ts`), and call `refresh()` from `next/cache` after writes.
    - `match-service.ts` — applies domain plans inside `db.transaction` after locking the match row (`SELECT … FOR UPDATE` via `lockMatch`). Any sign-up/withdraw/close logic must go through here to stay race-safe.
+   - `report-service.ts` — the match report ("acta"): replaces the line-up/stats in `match_players` and, with a result, applies the team Elo (`lib/domain/elo.ts`) to `users.rating` + `rating_history`, all under the same match lock. Corrections revert that match's deltas first.
    - `queries.ts` — read queries for pages; `geocode.ts` — Nominatim with a DB cache.
 4. **`src/app/`** — route groups `(auth)` (public sign-in/up/reset/invitations), `(onboarding)` (`/bienvenida` level self-assessment), `(app)` (signed-in area). Pages are server components that call `requireUser()` and `queries`; forms are client components using react-hook-form + `zodResolver(sharedSchema)`, calling the action and showing `sonner` toasts based on `result.ok`.
 
