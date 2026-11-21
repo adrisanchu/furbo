@@ -118,6 +118,9 @@ export const matches = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     scoreA: integer("score_a"),
     scoreB: integer("score_b"),
+    /** When/who registered (or last corrected) the result. */
+    resultRecordedAt: timestamp("result_recorded_at", { withTimezone: true }),
+    resultRecordedBy: uuid("result_recorded_by").references(() => users.id, { onDelete: "set null" }),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
@@ -140,7 +143,6 @@ export const matchSignups = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: signupStatusEnum("status").notNull(),
-    team: teamEnum("team"),
     /** Waitlist order (1 = next up). Null when not on the waitlist. */
     positionInQueue: integer("position_in_queue"),
     /** Fixed when the match closes. */
@@ -157,6 +159,48 @@ export const matchSignups = pgTable(
     primaryKey({ columns: [t.matchId, t.userId] }),
     index("match_signups_match_status_idx").on(t.matchId, t.status),
     index("match_signups_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Line-up and stats of a match (the "acta"), one row per player who played.
+ * Separate from match_signups: signing up (and paying) is not the same as
+ * playing — no-shows have a signup but no row here, and an admin can add a
+ * member who played without signing up.
+ */
+export const matchPlayers = pgTable(
+  "match_players",
+  {
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    team: teamEnum("team").notNull(),
+    isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
+    goals: integer("goals").notNull().default(0),
+    assists: integer("assists").notNull().default(0),
+    saves: integer("saves").notNull().default(0),
+    ownGoals: integer("own_goals").notNull().default(0),
+    /** Golazos: subset of goals. */
+    superGoals: integer("super_goals").notNull().default(0),
+    /** Paradones: subset of saves. */
+    superSaves: integer("super_saves").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.userId] }),
+    index("match_players_user_idx").on(t.userId),
+    check(
+      "match_players_counts_valid",
+      sql`${t.goals} >= 0 and ${t.assists} >= 0 and ${t.saves} >= 0 and ${t.ownGoals} >= 0
+        and ${t.superGoals} between 0 and ${t.goals} and ${t.superSaves} between 0 and ${t.saves}`,
+    ),
   ],
 );
 
