@@ -10,10 +10,10 @@ import { isDueForClosing, planJoin, planWithdraw } from "@/lib/domain/matches";
 import { formatDateTime } from "@/lib/domain/time";
 import { ActionError } from "./errors";
 
-type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type MatchRow = typeof matches.$inferSelect;
 
-async function lockMatch(tx: Tx, matchId: string): Promise<MatchRow> {
+export async function lockMatch(tx: Tx, matchId: string): Promise<MatchRow> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match) throw new ActionError("Ese partido no existe.");
   return match;
@@ -31,7 +31,7 @@ async function confirmedCount(tx: Tx, matchId: string) {
  * Closes a (locked) open match: fixes everyone's share and flags it when
  * it didn't reach the minimum (PRD §5.4, §5.6).
  */
-async function closeLockedMatch(tx: Tx, match: MatchRow, now: Date) {
+export async function closeLockedMatch(tx: Tx, match: MatchRow, now: Date) {
   const n = await confirmedCount(tx, match.id);
   const perPlayer = costPerPlayerCents(match.courtPriceCents, n);
   await tx
@@ -173,7 +173,6 @@ export async function joinMatch(matchId: string, userId: string): Promise<JoinOu
       const values = {
         status: "confirmed" as const,
         positionInQueue: null,
-        team: null,
         amountDueCents: plan.amountDueCents,
         paid: false,
         paidAt: null,
@@ -197,7 +196,7 @@ export async function joinMatch(matchId: string, userId: string): Promise<JoinOu
       .values({ matchId, userId, status: "waitlist", positionInQueue: position })
       .onConflictDoUpdate({
         target: [matchSignups.matchId, matchSignups.userId],
-        set: { status: "waitlist", positionInQueue: position, team: null },
+        set: { status: "waitlist", positionInQueue: position },
       });
     return { status: "waitlist", position };
   });
@@ -262,7 +261,6 @@ export async function leaveMatch(matchId: string, userId: string): Promise<Leave
       .update(matchSignups)
       .set({
         status: "withdrawn",
-        team: null,
         positionInQueue: null,
         amountDueCents: plan.keepDebt ? mine!.amountDueCents : null,
       })

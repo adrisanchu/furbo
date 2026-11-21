@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { groupInvites, groupMembers, groups, matches, matchSignups, users } from "@/db/schema";
+import { groupInvites, groupMembers, groups, matches, matchPlayers, matchSignups, ratingHistory, users } from "@/db/schema";
 
 /** Read-side queries. Authorization is the caller's job (pages check membership). */
 
@@ -19,8 +19,8 @@ const groupLevel = sql<number>`coalesce((
   join users u on u.id = gm.user_id
   where gm.group_id = ${groups.id} and gm.status = 'active' and u.rating is not null
     and exists (
-      select 1 from match_signups s join matches m on m.id = s.match_id
-      where s.user_id = u.id and s.status = 'confirmed' and m.group_id = ${groups.id}
+      select 1 from match_players mp join matches m on m.id = mp.match_id
+      where mp.user_id = u.id and m.group_id = ${groups.id}
         and m.status = 'played' and m.starts_at > now() - interval '6 months'
     )
 ), ${groups.referenceRating})`;
@@ -155,6 +155,8 @@ const matchCard = {
   pricePerPlayerCents: matches.pricePerPlayerCents,
   signupDeadline: matches.signupDeadline,
   status: matches.status,
+  scoreA: matches.scoreA,
+  scoreB: matches.scoreB,
   confirmedCount,
   waitlistCount,
 };
@@ -305,4 +307,99 @@ export async function groupBalances(groupId: string) {
     );
 
   return { debts, potCents: Math.max(0, pot?.cents ?? 0) };
+}
+
+/** Line-up and stats of a match, with each player's level change (if played). */
+export async function matchLineup(matchId: string) {
+  return db
+    .select({
+      userId: users.id,
+      name: users.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      nickname: users.nickname,
+      team: matchPlayers.team,
+      isGoalkeeper: matchPlayers.isGoalkeeper,
+      goals: matchPlayers.goals,
+      assists: matchPlayers.assists,
+      saves: matchPlayers.saves,
+      ownGoals: matchPlayers.ownGoals,
+      superGoals: matchPlayers.superGoals,
+      superSaves: matchPlayers.superSaves,
+      ratingBefore: ratingHistory.ratingBefore,
+      ratingAfter: ratingHistory.ratingAfter,
+      delta: ratingHistory.delta,
+      currentRating: users.rating,
+    })
+    .from(matchPlayers)
+    .innerJoin(users, eq(users.id, matchPlayers.userId))
+    .leftJoin(ratingHistory, and(eq(ratingHistory.matchId, matchPlayers.matchId), eq(ratingHistory.userId, matchPlayers.userId)))
+    .where(eq(matchPlayers.matchId, matchId))
+    .orderBy(asc(matchPlayers.team), desc(matchPlayers.isGoalkeeper), asc(users.name));
+}
+
+/**
+ * People an admin can put in the line-up: active members, plus anyone already
+ * in it (e.g. someone who left the group after the match). Confirmed sign-ups
+ * first.
+ */
+export async function reportCandidates(matchId: string, groupId: string) {
+  return db
+    .select({
+      userId: users.id,
+      name: users.name,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      nickname: users.nickname,
+      rating: users.rating,
+      signupStatus: matchSignups.status,
+    })
+    .from(groupMembers)
+    .innerJoin(users, eq(users.id, groupMembers.userId))
+    .leftJoin(matchSignups, and(eq(matchSignups.matchId, matchId), eq(matchSignups.userId, users.id)))
+    .leftJoin(matchPlayers, and(eq(matchPlayers.matchId, matchId), eq(matchPlayers.userId, users.id)))
+    .where(and(eq(groupMembers.groupId, groupId), or(eq(groupMembers.status, "active"), isNotNull(matchPlayers.userId))))
+    .orderBy(sql`(${matchSignups.status} = 'confirmed') desc nulls last`, asc(users.name));
+}
+
+/** Matches that started in the admin's groups and still have no result. */
+export async function pendingReportsForAdmin(userId: string) {
+  return db
+    .select({ id: matches.id, groupName: groups.name, startsAt: matches.startsAt })
+    .from(matches)
+    .innerJoin(groups, eq(groups.id, matches.groupId))
+    .innerJoin(
+      groupMembers,
+      and(
+        eq(groupMembers.groupId, matches.groupId),
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.status, "active"),
+        eq(groupMembers.role, "admin"),
+      ),
+    )
+    .where(and(inArray(matches.status, ["open", "closed"]), sql`${matches.startsAt} <= now()`))
+    .orderBy(desc(matches.startsAt))
+    .limit(5);
+}
+
+/** A player's level over time: the self-assessment, then one point per match. */
+export async function levelHistory(userId: string) {
+  return db
+    .select({
+      id: ratingHistory.id,
+      at: sql<Date>`coalesce(${matches.startsAt}, ${ratingHistory.createdAt})`.mapWith((v) => new Date(v)),
+      matchId: ratingHistory.matchId,
+      groupName: groups.name,
+      ratingAfter: ratingHistory.ratingAfter,
+      delta: ratingHistory.delta,
+      scoreA: matches.scoreA,
+      scoreB: matches.scoreB,
+      team: matchPlayers.team,
+    })
+    .from(ratingHistory)
+    .leftJoin(matches, eq(matches.id, ratingHistory.matchId))
+    .leftJoin(groups, eq(groups.id, matches.groupId))
+    .leftJoin(matchPlayers, and(eq(matchPlayers.matchId, ratingHistory.matchId), eq(matchPlayers.userId, ratingHistory.userId)))
+    .where(eq(ratingHistory.userId, userId))
+    .orderBy(asc(sql`coalesce(${matches.startsAt}, ${ratingHistory.createdAt})`));
 }
