@@ -1,4 +1,4 @@
-import { CalendarPlus, Lock, MapPin, MessageCircle, Settings, UserPlus } from "lucide-react";
+import { CalendarPlus, ChevronRight, Lock, MapPin, MessageCircle, Settings, Trophy, UserPlus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -154,7 +154,32 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
 
       {isMember && past.length > 0 && (
         <section aria-labelledby="ultimos" className="flex flex-col gap-3">
-          <SectionTitle id="ultimos">Últimos partidos</SectionTitle>
+          <SectionTitle
+            id="ultimos"
+            aside={
+              <Link
+                href={`/grupos/${id}/estadisticas`}
+                className="text-sm font-semibold text-accent-foreground gamer:text-primary"
+              >
+                Estadísticas
+              </Link>
+            }
+          >
+            Últimos partidos
+          </SectionTitle>
+          <Link
+            href={`/grupos/${id}/estadisticas`}
+            className="flex items-center gap-3.5 rounded-2xl border bg-card px-4 py-3.5 transition-colors hover:border-subtle"
+          >
+            <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-warning/15 text-warning">
+              <Trophy aria-hidden="true" className="size-[22px]" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[15px] font-semibold">Clasificaciones del grupo</span>
+              <span className="text-[13px] text-muted-foreground">Pichichi, Zamora, MVP, golazos, paradones…</span>
+            </span>
+            <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />
+          </Link>
           <ul className="flex flex-col divide-y rounded-2xl border bg-card">
             {past.map((m) => (
               <li key={m.id}>

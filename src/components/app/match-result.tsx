@@ -1,7 +1,8 @@
-import { Hand } from "lucide-react";
+import { Hand, Star } from "lucide-react";
 import { formatLevel, roundRating } from "@/lib/domain/level";
 import { statSummary } from "@/lib/domain/match-report";
 import { fullName, shortName } from "@/lib/domain/nickname";
+import { formatRating } from "@/lib/domain/ratings";
 import { cn } from "@/lib/utils";
 import { PlayerAvatar } from "./avatars";
 
@@ -38,10 +39,15 @@ export function MatchResult({
   lineup,
   score,
   meId,
+  ratings,
+  mvpId,
 }: {
   lineup: LineupRow[];
   score: { A: number; B: number } | null;
   meId: string;
+  /** Average rating received per player (phase 2b). */
+  ratings?: Map<string, { average: number; count: number }>;
+  mvpId?: string | null;
 }) {
   const team = (t: "A" | "B") => lineup.filter((p) => p.team === t);
   // Average level the teams had going into the match (current level for a plan).
@@ -76,7 +82,7 @@ export function MatchResult({
           <span className="sr-only">{winner ? `Gana el equipo ${winner}` : "Empate"}</span>
         </div>
       )}
-      <div className="grid gap-3 min-[420px]:grid-cols-2">
+      <div className="flex flex-col gap-3">
         {(["A", "B"] as const).map((t) => {
           const rows = team(t);
           const avg = average(rows);
@@ -99,9 +105,24 @@ export function MatchResult({
                           <span className="flex items-center gap-1 truncate text-sm font-medium">
                             {p.userId === meId ? "Tú" : shortName(p)}
                             {p.isGoalkeeper && <Hand aria-label="Portero" className="size-3.5 flex-none text-muted-foreground" />}
+                            {p.userId === mvpId && (
+                              <span className="flex flex-none items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold text-warning">
+                                <Star aria-hidden="true" className="size-3 fill-current" />
+                                MVP
+                              </span>
+                            )}
                           </span>
                           {summary && <span className="truncate text-xs text-muted-foreground">{summary}</span>}
                         </span>
+                        {ratings?.get(p.userId) && (
+                          <span
+                            title={`${ratings.get(p.userId)!.count} valoraciones`}
+                            className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-bold tabular-nums"
+                          >
+                            <span className="sr-only">Nota media </span>
+                            {formatRating(Math.round(ratings.get(p.userId)!.average * 10) / 10)}
+                          </span>
+                        )}
                         {p.delta != null && (
                           <span
                             className={cn(

@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, ClipboardList, MapPin, Navigation, Pencil } from "lucide-react";
+import { AlertTriangle, Ban, ChevronRight, ClipboardList, MapPin, Navigation, Pencil, Star } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,6 +10,7 @@ import { SpotsBar, spotsLabel } from "@/components/app/spots-bar";
 import { Button } from "@/components/ui/button";
 import { formatLevel, roundRating } from "@/lib/domain/level";
 import { fullName, shortName } from "@/lib/domain/nickname";
+import { pickMvp } from "@/lib/domain/ratings";
 import { FORMAT_LABEL, isFrozen, priceIfJoining, STATUS_LABEL } from "@/lib/domain/matches";
 import { costPerPlayerCents, formatEuros } from "@/lib/domain/money";
 import { formatDateTime, formatLongDate, formatRelativeDay, formatTime } from "@/lib/domain/time";
@@ -18,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { idSchema } from "@/server/action";
 import { cancelMatch, closeMatch } from "@/server/actions/matches";
 import { getMembership } from "@/server/authz";
-import { matchById, matchLineup, matchSignupsList } from "@/server/queries";
+import { matchById, matchLineup, matchRatings, matchSignupsList } from "@/server/queries";
 import { MatchCta, type CtaState } from "./match-cta";
 import { PaymentToggle } from "./payment-toggle";
 
@@ -35,7 +36,20 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
   const isAdmin = isMember && membership.role === "admin";
   if (!isMember) notFound();
 
-  const [signups, lineup] = await Promise.all([matchSignupsList(id), matchLineup(id)]);
+  const [signups, lineup, ratings] = await Promise.all([
+    matchSignupsList(id),
+    matchLineup(id),
+    matchRatings(id, user.id),
+  ]);
+  const mvpId = pickMvp(
+    lineup.map((p) => ({
+      userId: p.userId,
+      average: ratings.summary.get(p.userId)?.average ?? null,
+      count: ratings.summary.get(p.userId)?.count ?? 0,
+      goals: p.goals,
+      assists: p.assists,
+    })),
+  );
   const confirmed = signups.filter((s) => s.status === "confirmed").sort((a, b) => +a.createdAt - +b.createdAt);
   const waitlist = signups.filter((s) => s.status === "waitlist");
   const owingWithdrawn = signups.filter((s) => s.status === "withdrawn" && s.amountDueCents != null && s.amountDueCents > 0);
@@ -218,7 +232,31 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
           lineup={lineup}
           score={match.status === "played" ? { A: match.scoreA ?? 0, B: match.scoreB ?? 0 } : null}
           meId={user.id}
+          ratings={ratings.summary}
+          mvpId={mvpId}
         />
+      )}
+
+      {match.status === "played" && lineup.length > 0 && (
+        <Link
+          href={`/partidos/${id}/valorar`}
+          className="flex items-center gap-3.5 rounded-2xl border bg-card px-4 py-3.5 transition-colors hover:border-subtle"
+        >
+          <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-warning/15 text-warning">
+            <Star aria-hidden="true" className="size-[22px]" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[15px] font-semibold">
+              {ratings.mine.size ? "Cambiar mis notas" : "Valorar jugadores"}
+            </span>
+            <span className="text-[13px] text-muted-foreground">
+              {ratings.mine.size
+                ? `Has valorado a ${ratings.mine.size} de ${lineup.length}`
+                : "Pon nota a cada uno. El MVP sale de la mejor media."}
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />
+        </Link>
       )}
 
       {isAdmin && !isCancelled && match.status !== "played" && frozen && (

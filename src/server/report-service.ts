@@ -1,7 +1,7 @@
 import "server-only";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
 import { db } from "@/db";
-import { groupMembers, matches, matchPlayers, ratingHistory, users } from "@/db/schema";
+import { groupMembers, matches, matchPlayers, playerRatings, ratingHistory, users } from "@/db/schema";
 import { computeLevelChanges, isProvisional, type LevelChange } from "@/lib/domain/elo";
 import { clampRating } from "@/lib/domain/level";
 import type { MatchReportInput } from "@/lib/validation/report";
@@ -112,6 +112,15 @@ export async function saveMatchReport(matchId: string, recordedBy: string, repor
     if (report.result && match.status === "open") match = (await closeLockedMatch(tx, match, now)).match;
 
     await tx.delete(matchPlayers).where(eq(matchPlayers.matchId, matchId));
+    // Ratings only make sense for people who played: drop those of anyone removed.
+    await tx
+      .delete(playerRatings)
+      .where(
+        and(
+          eq(playerRatings.matchId, matchId),
+          ids.length ? notInArray(playerRatings.ratedId, ids) : undefined,
+        ),
+      );
     if (report.players.length) {
       await tx.insert(matchPlayers).values(
         report.players.map((p) =>

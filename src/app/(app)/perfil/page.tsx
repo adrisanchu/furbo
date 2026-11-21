@@ -5,12 +5,13 @@ import { initials } from "@/components/app/avatars";
 import { LevelChart } from "@/components/app/level-chart";
 import { LevelIndicator } from "@/components/app/level-indicator";
 import { formatShortDate } from "@/lib/domain/time";
+import { formatRating } from "@/lib/domain/ratings";
 import { cn } from "@/lib/utils";
 import { canChangeNickname, nextNicknameChangeAt } from "@/lib/domain/nickname";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/session";
 import { POSITION_LABEL, type Position } from "@/lib/validation/profile";
-import { levelHistory, myGroups } from "@/server/queries";
+import { levelHistory, myGroups, playerTotals } from "@/server/queries";
 import { ProfileForm } from "./profile-form";
 import { SignOutButton } from "./sign-out-button";
 import { ThemePicker } from "./theme-picker";
@@ -22,7 +23,11 @@ const monthFmt = new Intl.DateTimeFormat("es-ES", { month: "short", year: "numer
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const [groups, history] = await Promise.all([myGroups(user.id), levelHistory(user.id)]);
+  const [groups, history, [totals]] = await Promise.all([
+    myGroups(user.id),
+    levelHistory(user.id),
+    playerTotals({ userId: user.id }),
+  ]);
   const recent = history.filter((h) => h.matchId).slice(-5).reverse();
   const position = (user.preferredPosition ?? "any") as Position;
   const matchesPlayed = user.matchesPlayed ?? 0;
@@ -60,6 +65,34 @@ export default async function ProfilePage() {
             Repetir la autoevaluación
           </Link>
         </Button>
+      )}
+
+      {totals && (
+        <section aria-labelledby="numeros" className="flex flex-col gap-3">
+          <h2 id="numeros" className="text-lg font-bold">
+            Tus números
+          </h2>
+          <dl className="grid grid-cols-4 gap-2">
+            {[
+              ["Partidos", String(totals.matches)],
+              ["G · E · P", `${totals.wins}·${totals.draws}·${totals.losses}`],
+              ["Goles", String(totals.goals)],
+              ["Asist.", String(totals.assists)],
+              ["Golazos", String(totals.superGoals)],
+              ["Paradones", String(totals.superSaves)],
+              ["Nota media", totals.averageRating == null ? "–" : formatRating(Math.round(totals.averageRating * 10) / 10)],
+              ["MVP", String(totals.mvps)],
+            ].map(([label, value]) => (
+              <div key={label} className="flex flex-col items-center gap-0.5 rounded-xl border bg-card px-1 py-2.5">
+                <dd className="font-display text-2xl leading-none font-bold tabular-nums">{value}</dd>
+                <dt className="text-center text-[11px] text-muted-foreground">{label}</dt>
+              </div>
+            ))}
+          </dl>
+          <p className="text-[13px] text-muted-foreground">
+            En todos tus grupos. Compárate con los demás en las estadísticas de cada grupo.
+          </p>
+        </section>
       )}
 
       <section aria-labelledby="evolucion" className="flex flex-col gap-3">

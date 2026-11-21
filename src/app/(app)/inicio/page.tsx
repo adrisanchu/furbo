@@ -1,4 +1,4 @@
-import { Check, ChevronRight, ClipboardList, CreditCard, MapPin, UsersRound } from "lucide-react";
+import { Check, ChevronRight, ClipboardList, CreditCard, MapPin, Star, UsersRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GroupAvatar } from "@/components/app/avatars";
@@ -11,17 +11,24 @@ import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { costPerPlayerCents, formatEuros } from "@/lib/domain/money";
 import { formatLongDate, formatRelativeDay, formatShortDate, formatTime } from "@/lib/domain/time";
 import { requireUser } from "@/lib/session";
-import { myGroups, pendingPaymentsForUser, pendingReportsForAdmin, upcomingMatchesForUser } from "@/server/queries";
+import {
+  matchesToRate,
+  myGroups,
+  pendingPaymentsForUser,
+  pendingReportsForAdmin,
+  upcomingMatchesForUser,
+} from "@/server/queries";
 
 export const metadata: Metadata = { title: "Inicio" };
 
 export default async function HomePage() {
   const user = await requireUser();
-  const [matches, groups, pending, reports] = await Promise.all([
+  const [matches, groups, pending, reports, toRate] = await Promise.all([
     upcomingMatchesForUser(user.id),
     myGroups(user.id),
     pendingPaymentsForUser(user.id),
     pendingReportsForAdmin(user.id),
+    matchesToRate(user.id),
   ]);
   const now = new Date();
   const next = matches.find((m) => m.myStatus === "confirmed");
@@ -51,6 +58,24 @@ export default async function HomePage() {
             </span>
             <span className="truncate text-[13px] text-muted-foreground">
               {reports[0]!.groupName} · {formatShortDate(reports[0]!.startsAt)}. Registra el resultado y quién marcó.
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />
+        </Link>
+      )}
+
+      {toRate.length > 0 && (
+        <Link
+          href={`/partidos/${toRate[0]!.id}/valorar`}
+          className="flex items-center gap-3.5 rounded-2xl border bg-card px-4 py-3.5 transition-colors hover:border-subtle"
+        >
+          <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-warning/15 text-warning">
+            <Star aria-hidden="true" className="size-[22px]" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[15px] font-semibold">Valora el último partido</span>
+            <span className="truncate text-[13px] text-muted-foreground">
+              {toRate[0]!.groupName} · {formatShortDate(toRate[0]!.startsAt)}. ¿Quién fue el MVP?
             </span>
           </span>
           <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />

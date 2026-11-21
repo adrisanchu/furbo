@@ -59,6 +59,14 @@ pnpm dev
 - **Corregir un acta** deshace los cambios de nivel de **ese** partido y vuelve a aplicarlos con los datos nuevos (no recalcula los partidos posteriores).
 - Los admins ven «Falta el acta» en Inicio para los partidos ya empezados sin resultado. El perfil muestra la evolución del nivel y los últimos partidos.
 
+## Notas, MVP y clasificaciones (fase 2b)
+
+- **Notas:** cuando un partido tiene acta, cualquier miembro del grupo puede poner nota (0–10, de medio en medio punto) a quien jugó, incluido él mismo (de momento se guarda todo; se podrá filtrar después). Se guardan como medios puntos (`player_ratings.score_halves`, 0–20) y se pueden cambiar cuando se quiera. Solo se muestra la **media** de cada jugador, nunca la nota individual.
+- **MVP** de cada partido: la mejor media; empate → más valoraciones → más goles + asistencias.
+- **Clasificaciones por grupo** (`/grupos/[id]/estadisticas`): Pichichi, Asistencias, Golazos, Zamora (menos goles encajados por partido en portería), Paradones, MVP, Mejor nota media y Fijos (más partidos). Zamora y nota media piden un mínimo de 3 partidos. Las consultas aceptan un rango de fechas (`playerTotals`), así que una «temporada» es solo un filtro por fecha.
+- El perfil muestra «Tus números» (en todos tus grupos) e Inicio recuerda valorar el último partido jugado (7 días).
+- Las notas todavía **no afectan al nivel** (fase 2c).
+
 ## Estructura
 
 ```

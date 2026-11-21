@@ -1,7 +1,18 @@
 import "server-only";
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { groupInvites, groupMembers, groups, matches, matchPlayers, matchSignups, ratingHistory, users } from "@/db/schema";
+import {
+  groupInvites,
+  groupMembers,
+  groups,
+  matches,
+  matchPlayers,
+  matchSignups,
+  playerRatings,
+  ratingHistory,
+  users,
+} from "@/db/schema";
+import type { PlayerTotals } from "@/lib/domain/leaderboards";
 
 /** Read-side queries. Authorization is the caller's job (pages check membership). */
 
@@ -402,4 +413,146 @@ export async function levelHistory(userId: string) {
     .leftJoin(matchPlayers, and(eq(matchPlayers.matchId, ratingHistory.matchId), eq(matchPlayers.userId, ratingHistory.userId)))
     .where(eq(ratingHistory.userId, userId))
     .orderBy(asc(sql`coalesce(${matches.startsAt}, ${ratingHistory.createdAt})`));
+}
+
+/** Average and count of the ratings each player got in a match, plus the viewer's own ratings. */
+export async function matchRatings(matchId: string, viewerId: string) {
+  const [summary, mine] = await Promise.all([
+    db
+      .select({
+        userId: playerRatings.ratedId,
+        average: sql<number>`avg(${playerRatings.scoreHalves})::float8 / 2`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(playerRatings)
+      .where(eq(playerRatings.matchId, matchId))
+      .groupBy(playerRatings.ratedId),
+    db
+      .select({ userId: playerRatings.ratedId, scoreHalves: playerRatings.scoreHalves })
+      .from(playerRatings)
+      .where(and(eq(playerRatings.matchId, matchId), eq(playerRatings.raterId, viewerId))),
+  ]);
+  return {
+    summary: new Map(summary.map((r) => [r.userId, { average: r.average, count: r.count }])),
+    mine: new Map(mine.map((r) => [r.userId, r.scoreHalves / 2])),
+  };
+}
+
+/**
+ * Per-player totals over played matches, filtered by group and/or player and
+ * an optional date range (seasons are just a date filter). MVP per match:
+ * best average rating, then more ratings, then goals + assists (same rules as
+ * `pickMvp`).
+ */
+export async function playerTotals(filter: { groupId?: string; userId?: string; from?: Date; to?: Date }) {
+  const group = filter.groupId ? sql`and m.group_id = ${filter.groupId}` : sql``;
+  const user = filter.userId ? sql`and mp.user_id = ${filter.userId}` : sql``;
+  const from = filter.from ? sql`and m.starts_at >= ${filter.from}` : sql``;
+  const to = filter.to ? sql`and m.starts_at < ${filter.to}` : sql``;
+
+  const result = await db.execute<{
+    user_id: string;
+    matches: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    goals: number;
+    assists: number;
+    super_goals: number;
+    saves: number;
+    super_saves: number;
+    own_goals: number;
+    keeper_matches: number;
+    goals_conceded: number;
+    rated_matches: number;
+    average_rating: number | null;
+    mvps: number;
+  }>(sql`
+    with played as (
+      select mp.*, m.score_a, m.score_b
+      from match_players mp join matches m on m.id = mp.match_id
+      where m.status = 'played' ${group} ${user} ${from} ${to}
+    ),
+    rated as (
+      select pr.match_id, pr.rated_id, avg(pr.score_halves) / 2.0 as average,
+             count(*) as n, sum(pr.score_halves) as halves
+      from player_ratings pr join matches m on m.id = pr.match_id
+      where m.status = 'played' ${group} ${from} ${to}
+      group by pr.match_id, pr.rated_id
+    ),
+    mvp as (
+      select distinct on (r.match_id) r.match_id, r.rated_id
+      from rated r join match_players x on x.match_id = r.match_id and x.user_id = r.rated_id
+      order by r.match_id, r.average desc, r.n desc, (x.goals + x.assists) desc, r.rated_id
+    )
+    select p.user_id,
+      count(*)::int as matches,
+      count(*) filter (where (p.team = 'A' and p.score_a > p.score_b) or (p.team = 'B' and p.score_b > p.score_a))::int as wins,
+      count(*) filter (where p.score_a = p.score_b)::int as draws,
+      count(*) filter (where (p.team = 'A' and p.score_a < p.score_b) or (p.team = 'B' and p.score_b < p.score_a))::int as losses,
+      sum(p.goals)::int as goals,
+      sum(p.assists)::int as assists,
+      sum(p.super_goals)::int as super_goals,
+      sum(p.saves)::int as saves,
+      sum(p.super_saves)::int as super_saves,
+      sum(p.own_goals)::int as own_goals,
+      count(*) filter (where p.is_goalkeeper)::int as keeper_matches,
+      coalesce(sum(case when p.is_goalkeeper then case when p.team = 'A' then p.score_b else p.score_a end end), 0)::int as goals_conceded,
+      count(r.match_id)::int as rated_matches,
+      (sum(r.halves)::float8 / nullif(sum(r.n), 0) / 2) as average_rating,
+      count(v.match_id)::int as mvps
+    from played p
+    left join rated r on r.match_id = p.match_id and r.rated_id = p.user_id
+    left join mvp v on v.match_id = p.match_id and v.rated_id = p.user_id
+    group by p.user_id
+  `);
+
+  return result.rows.map(
+    (r): PlayerTotals => ({
+      userId: r.user_id,
+      matches: r.matches,
+      wins: r.wins,
+      draws: r.draws,
+      losses: r.losses,
+      goals: r.goals,
+      assists: r.assists,
+      superGoals: r.super_goals,
+      saves: r.saves,
+      superSaves: r.super_saves,
+      ownGoals: r.own_goals,
+      keeperMatches: r.keeper_matches,
+      goalsConceded: r.goals_conceded,
+      ratedMatches: r.rated_matches,
+      averageRating: r.average_rating,
+      mvps: r.mvps,
+    }),
+  );
+}
+
+/** Names for a set of users (for leaderboards). */
+export async function usersByIds(ids: string[]) {
+  if (!ids.length) return [];
+  return db
+    .select({ userId: users.id, name: users.name, firstName: users.firstName, lastName: users.lastName, nickname: users.nickname })
+    .from(users)
+    .where(inArray(users.id, ids));
+}
+
+/** Played matches (last 7 days) the user played in and hasn't rated anyone yet. */
+export async function matchesToRate(userId: string) {
+  return db
+    .select({ id: matches.id, groupName: groups.name, startsAt: matches.startsAt })
+    .from(matchPlayers)
+    .innerJoin(matches, eq(matches.id, matchPlayers.matchId))
+    .innerJoin(groups, eq(groups.id, matches.groupId))
+    .where(
+      and(
+        eq(matchPlayers.userId, userId),
+        eq(matches.status, "played"),
+        sql`${matches.startsAt} > now() - interval '7 days'`,
+        sql`not exists (select 1 from player_ratings pr where pr.match_id = ${matches.id} and pr.rater_id = ${userId})`,
+      ),
+    )
+    .orderBy(desc(matches.startsAt))
+    .limit(3);
 }
