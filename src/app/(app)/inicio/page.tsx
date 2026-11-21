@@ -1,4 +1,4 @@
-import { Check, ChevronRight, CreditCard, MapPin, UsersRound } from "lucide-react";
+import { Check, ChevronRight, ClipboardList, CreditCard, MapPin, UsersRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GroupAvatar } from "@/components/app/avatars";
@@ -11,23 +11,24 @@ import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { costPerPlayerCents, formatEuros } from "@/lib/domain/money";
 import { formatLongDate, formatRelativeDay, formatShortDate, formatTime } from "@/lib/domain/time";
 import { requireUser } from "@/lib/session";
-import { myGroups, pendingPaymentsForUser, upcomingMatchesForUser } from "@/server/queries";
+import { myGroups, pendingPaymentsForUser, pendingReportsForAdmin, upcomingMatchesForUser } from "@/server/queries";
 
 export const metadata: Metadata = { title: "Inicio" };
 
 export default async function HomePage() {
   const user = await requireUser();
-  const [matches, groups, pending] = await Promise.all([
+  const [matches, groups, pending, reports] = await Promise.all([
     upcomingMatchesForUser(user.id),
     myGroups(user.id),
     pendingPaymentsForUser(user.id),
+    pendingReportsForAdmin(user.id),
   ]);
   const now = new Date();
   const next = matches.find((m) => m.myStatus === "confirmed");
   const open = matches.filter((m) => m.myStatus !== "confirmed" && m.myStatus !== "waitlist" && m.id !== next?.id).slice(0, 3);
   const pendingTotal = pending.reduce((sum, p) => sum + (p.amountDueCents ?? 0), 0);
   const pendingGroups = [...new Set(pending.map((p) => p.groupName))];
-  const firstName = user.name?.split(" ")[0];
+  const firstName = user.firstName ?? user.name?.split(" ")[0];
 
   return (
     <>
@@ -35,6 +36,26 @@ export default async function HomePage() {
         <span className="text-[13px] text-muted-foreground first-letter:uppercase">{formatLongDate(now)}</span>
         <h1 className="text-[26px] font-bold tracking-[-0.02em]">{firstName ? `Hola, ${firstName}` : "Hola"}</h1>
       </header>
+
+      {reports.length > 0 && (
+        <Link
+          href={`/partidos/${reports[0]!.id}/acta`}
+          className="flex items-center gap-3.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3.5"
+        >
+          <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <ClipboardList aria-hidden="true" className="size-[22px]" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[15px] font-semibold">
+              {reports.length === 1 ? "Falta el acta de un partido" : `Faltan ${reports.length} actas`}
+            </span>
+            <span className="truncate text-[13px] text-muted-foreground">
+              {reports[0]!.groupName} · {formatShortDate(reports[0]!.startsAt)}. Registra el resultado y quién marcó.
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />
+        </Link>
+      )}
 
       <section aria-labelledby="proximo" className="flex flex-col gap-3">
         <h2 id="proximo" className="text-[13px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">

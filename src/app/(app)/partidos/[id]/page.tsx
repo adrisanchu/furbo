@@ -1,9 +1,10 @@
-import { AlertTriangle, Ban, MapPin, Navigation, Pencil } from "lucide-react";
+import { AlertTriangle, Ban, ClipboardList, MapPin, Navigation, Pencil } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionButton } from "@/components/app/action-button";
 import { PlayerAvatar } from "@/components/app/avatars";
+import { MatchResult } from "@/components/app/match-result";
 import { PageHeader, SectionTitle } from "@/components/app/page-header";
 import { SpotsBar, spotsLabel } from "@/components/app/spots-bar";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { idSchema } from "@/server/action";
 import { cancelMatch, closeMatch } from "@/server/actions/matches";
 import { getMembership } from "@/server/authz";
-import { matchById, matchSignupsList } from "@/server/queries";
+import { matchById, matchLineup, matchSignupsList } from "@/server/queries";
 import { MatchCta, type CtaState } from "./match-cta";
 import { PaymentToggle } from "./payment-toggle";
 
@@ -34,7 +35,7 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
   const isAdmin = isMember && membership.role === "admin";
   if (!isMember) notFound();
 
-  const signups = await matchSignupsList(id);
+  const [signups, lineup] = await Promise.all([matchSignupsList(id), matchLineup(id)]);
   const confirmed = signups.filter((s) => s.status === "confirmed").sort((a, b) => +a.createdAt - +b.createdAt);
   const waitlist = signups.filter((s) => s.status === "waitlist");
   const owingWithdrawn = signups.filter((s) => s.status === "withdrawn" && s.amountDueCents != null && s.amountDueCents > 0);
@@ -64,7 +65,9 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
   // Call to action
   const cta: CtaState = (() => {
     if (isCancelled) return { kind: "info", hint: "Partido cancelado", sub: "No hay nada que pagar" };
-    if (match.status === "played") return { kind: "info", hint: "Partido jugado", sub: formatLongDate(match.startsAt) };
+    if (match.status === "played") {
+      return { kind: "info", hint: "Partido jugado", sub: `Equipo A ${match.scoreA ?? 0} – ${match.scoreB ?? 0} Equipo B` };
+    }
     if (frozen) return { kind: "info", hint: "El partido ya ha empezado", sub: "Ya no se admiten cambios" };
     if (me?.status === "confirmed") {
       const warning = isClosed
@@ -210,6 +213,26 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
         </section>
       )}
 
+      {lineup.length > 0 && (
+        <MatchResult
+          lineup={lineup}
+          score={match.status === "played" ? { A: match.scoreA ?? 0, B: match.scoreB ?? 0 } : null}
+          meId={user.id}
+        />
+      )}
+
+      {isAdmin && !isCancelled && match.status !== "played" && frozen && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-primary/40 bg-primary/10 p-4">
+          <p className="text-sm">El partido ya ha empezado. Registra el resultado y quién marcó para actualizar los niveles.</p>
+          <Button asChild size="lg">
+            <Link href={`/partidos/${id}/acta`}>
+              <ClipboardList aria-hidden="true" />
+              Registrar resultado
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <section aria-labelledby="apuntados" className="flex flex-col gap-3">
         <SectionTitle
           id="apuntados"
@@ -241,26 +264,29 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
         )}
       </section>
 
-      <section aria-labelledby="espera" className="flex flex-col gap-3">
-        <SectionTitle id="espera" aside={<span className="text-[13px] text-muted-foreground">{waitlist.length} en espera</span>}>
-          Lista de espera
-        </SectionTitle>
-        {waitlist.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nadie en espera. Cuando se llenen las {match.maxPlayers} plazas, los siguientes entran aquí por orden.
-          </p>
-        ) : (
-          <ol className="flex flex-col divide-y rounded-2xl border bg-card">
-            {waitlist.map((s) => (
-              <li key={s.userId} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="w-5 font-display text-lg font-bold">{s.positionInQueue}</span>
-                <PlayerAvatar id={s.userId} name={s.name} highlight={s.userId === user.id} />
-                <span className="flex-1 truncate text-sm font-medium">{s.userId === user.id ? "Tú" : fullName(s)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      {(isOpen || isClosed) && (
+        <section aria-labelledby="espera" className="flex flex-col gap-3">
+          <SectionTitle id="espera" aside={<span className="text-[13px] text-muted-foreground">{waitlist.length} en espera</span>}>
+            Lista de espera
+          </SectionTitle>
+          {waitlist.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nadie en espera. Cuando se llenen las {match.maxPlayers} plazas, los siguientes entran aquí por orden.
+            </p>
+          ) : (
+            <ol className="flex flex-col divide-y rounded-2xl border bg-card">
+              {waitlist.map((s) => (
+                <li key={s.userId} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="w-5 font-display text-lg font-bold">{s.positionInQueue}</span>
+                  <PlayerAvatar id={s.userId} name={s.name} highlight={s.userId === user.id} />
+                  <span className="flex-1 truncate text-sm font-medium">{s.userId === user.id ? "Tú" : fullName(s)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+      )}
 
       {isAdmin && payments.length > 0 && (isClosed || match.status === "played") && (
         <section aria-labelledby="pagos" className="flex flex-col gap-3">
@@ -291,52 +317,62 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
         </section>
       )}
 
-      {isAdmin && (isOpen || isClosed) && (
+      {isAdmin && !isCancelled && (
         <section aria-labelledby="gestion" className="flex flex-col gap-3">
           <SectionTitle id="gestion">Gestión del partido</SectionTitle>
-          <div className="grid grid-cols-2 gap-2.5">
-            <Button asChild variant="outline" size="lg">
-              <Link href={`/partidos/${id}/editar`}>
-                <Pencil aria-hidden="true" />
-                Editar
-              </Link>
-            </Button>
-            {isOpen ? (
+          <Button asChild variant={match.status === "played" ? "outline" : "default"} size="lg">
+            <Link href={`/partidos/${id}/acta`}>
+              <ClipboardList aria-hidden="true" />
+              {match.status === "played" ? "Corregir acta" : frozen ? "Registrar resultado" : "Alineación"}
+            </Link>
+          </Button>
+          {(isOpen || isClosed) && (
+            <>
+              <div className="grid grid-cols-2 gap-2.5">
+                <Button asChild variant="outline" size="lg">
+                  <Link href={`/partidos/${id}/editar`}>
+                    <Pencil aria-hidden="true" />
+                    Editar
+                  </Link>
+                </Button>
+                {isOpen ? (
+                  <ActionButton
+                    variant="outline"
+                    size="lg"
+                    action={closeMatch.bind(null, id)}
+                    success="Inscripción cerrada: las partes quedan fijadas"
+                    confirm={{
+                      title: "¿Cerrar la inscripción ahora?",
+                      description: `Cada uno de los ${confirmed.length} apuntados pagará ${formatEuros(costPerPlayerCents(match.courtPriceCents, confirmed.length))}. Los que lleguen después irán a la lista de espera.`,
+                      confirmLabel: "Cerrar inscripción",
+                    }}
+                  >
+                    Cerrar inscripción
+                  </ActionButton>
+                ) : (
+                  <span />
+                )}
+              </div>
               <ActionButton
-                variant="outline"
+                variant="ghost"
                 size="lg"
-                action={closeMatch.bind(null, id)}
-                success="Inscripción cerrada: las partes quedan fijadas"
+                className="text-destructive"
+                action={cancelMatch.bind(null, id)}
+                success="Partido cancelado"
                 confirm={{
-                  title: "¿Cerrar la inscripción ahora?",
-                  description: `Cada uno de los ${confirmed.length} apuntados pagará ${formatEuros(costPerPlayerCents(match.courtPriceCents, confirmed.length))}. Los que lleguen después irán a la lista de espera.`,
-                  confirmLabel: "Cerrar inscripción",
+                  title: "¿Cancelar el partido?",
+                  description: "Se anulan las partes pendientes de pago. Lo ya pagado queda registrado para devolverlo fuera de la app.",
+                  confirmLabel: "Cancelar partido",
                 }}
               >
-                Cerrar inscripción
+                Cancelar partido
               </ActionButton>
-            ) : (
-              <span />
-            )}
-          </div>
-          <ActionButton
-            variant="ghost"
-            size="lg"
-            className="text-destructive"
-            action={cancelMatch.bind(null, id)}
-            success="Partido cancelado"
-            confirm={{
-              title: "¿Cancelar el partido?",
-              description: "Se anulan las partes pendientes de pago. Lo ya pagado queda registrado para devolverlo fuera de la app.",
-              confirmLabel: "Cancelar partido",
-            }}
-          >
-            Cancelar partido
-          </ActionButton>
-          {isOpen && (
-            <p className="text-[13px] text-muted-foreground">
-              Al cerrar la inscripción (a mano, al llenarse o al llegar la fecha límite) el precio queda fijado y podrás marcar quién ha pagado.
-            </p>
+              {isOpen && (
+                <p className="text-[13px] text-muted-foreground">
+                  Al cerrar la inscripción (a mano, al llenarse o al llegar la fecha límite) el precio queda fijado y podrás marcar quién ha pagado.
+                </p>
+              )}
+            </>
           )}
         </section>
       )}

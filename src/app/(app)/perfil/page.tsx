@@ -2,12 +2,15 @@ import { RotateCcw } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { initials } from "@/components/app/avatars";
+import { LevelChart } from "@/components/app/level-chart";
 import { LevelIndicator } from "@/components/app/level-indicator";
+import { formatShortDate } from "@/lib/domain/time";
+import { cn } from "@/lib/utils";
 import { canChangeNickname, nextNicknameChangeAt } from "@/lib/domain/nickname";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/session";
 import { POSITION_LABEL, type Position } from "@/lib/validation/profile";
-import { myGroups } from "@/server/queries";
+import { levelHistory, myGroups } from "@/server/queries";
 import { ProfileForm } from "./profile-form";
 import { SignOutButton } from "./sign-out-button";
 import { ThemePicker } from "./theme-picker";
@@ -19,7 +22,8 @@ const monthFmt = new Intl.DateTimeFormat("es-ES", { month: "short", year: "numer
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const groups = await myGroups(user.id);
+  const [groups, history] = await Promise.all([myGroups(user.id), levelHistory(user.id)]);
+  const recent = history.filter((h) => h.matchId).slice(-5).reverse();
   const position = (user.preferredPosition ?? "any") as Position;
   const matchesPlayed = user.matchesPlayed ?? 0;
   const changedAt = user.nicknameChangedAt ? new Date(user.nicknameChangedAt) : null;
@@ -57,6 +61,56 @@ export default async function ProfilePage() {
           </Link>
         </Button>
       )}
+
+      <section aria-labelledby="evolucion" className="flex flex-col gap-3">
+        <h2 id="evolucion" className="text-lg font-bold">
+          Evolución del nivel
+        </h2>
+        <div className="rounded-2xl border bg-card p-4">
+          <LevelChart points={history.map((h) => ({ at: h.at, rating: h.ratingAfter, isAssessment: !h.matchId }))} />
+        </div>
+        {recent.length > 0 && (
+          <ul className="flex flex-col divide-y rounded-2xl border bg-card">
+            {recent.map((h) => {
+              const mine = h.team === "A" ? h.scoreA : h.scoreB;
+              const theirs = h.team === "A" ? h.scoreB : h.scoreA;
+              const outcome = mine == null || theirs == null ? "–" : mine > theirs ? "G" : mine === theirs ? "E" : "P";
+              return (
+                <li key={h.id}>
+                  <Link href={`/partidos/${h.matchId}`} className="flex items-center gap-3 px-4 py-3">
+                    <span
+                      aria-label={outcome === "G" ? "Ganado" : outcome === "E" ? "Empate" : "Perdido"}
+                      className={cn(
+                        "flex size-8 flex-none items-center justify-center rounded-lg text-sm font-bold",
+                        outcome === "G" && "bg-level-up/15 text-level-up",
+                        outcome === "E" && "bg-muted text-muted-foreground",
+                        outcome === "P" && "bg-level-down/15 text-level-down",
+                      )}
+                    >
+                      {outcome}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-[15px] font-medium tabular-nums">
+                        {mine}–{theirs} · <span className="text-muted-foreground">{h.groupName}</span>
+                      </span>
+                      <span className="text-[13px] text-muted-foreground">{formatShortDate(h.at)}</span>
+                    </span>
+                    <span
+                      className={cn(
+                        "font-display text-lg font-bold tabular-nums",
+                        h.delta > 0 ? "text-level-up" : h.delta < 0 ? "text-level-down" : "text-muted-foreground",
+                      )}
+                    >
+                      {h.delta > 0 ? "+" : h.delta < 0 ? "−" : "±"}
+                      {Math.abs(h.delta).toFixed(2)}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section aria-labelledby="datos" className="flex flex-col gap-3">
         <h2 id="datos" className="text-lg font-bold">

@@ -11,12 +11,20 @@ import { formatLevel } from "@/lib/domain/level";
 import { fullName } from "@/lib/domain/nickname";
 import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { formatEuros } from "@/lib/domain/money";
+import { formatShortDate } from "@/lib/domain/time";
+import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/session";
 import { POSITION_LABEL } from "@/lib/validation/profile";
 import { idSchema } from "@/server/action";
 import { joinPublicGroup, leaveGroup } from "@/server/actions/groups";
 import { getMembership } from "@/server/authz";
-import { groupBalances, groupById, groupMembersList, upcomingMatchesForUser } from "@/server/queries";
+import {
+  groupBalances,
+  groupById,
+  groupMembersList,
+  pastMatchesForGroup,
+  upcomingMatchesForUser,
+} from "@/server/queries";
 import { MemberActions } from "./member-actions";
 
 export const metadata: Metadata = { title: "Grupo" };
@@ -33,9 +41,14 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
   // Private groups are invisible to non-members (PRD §5.3).
   if (!isMember && group.visibility === "private") notFound();
 
-  const [members, matches, balances] = isMember
-    ? await Promise.all([groupMembersList(id), upcomingMatchesForUser(user.id, { groupId: id }), groupBalances(id)])
-    : [[], [], null];
+  const [members, matches, balances, past] = isMember
+    ? await Promise.all([
+        groupMembersList(id),
+        upcomingMatchesForUser(user.id, { groupId: id }),
+        groupBalances(id),
+        pastMatchesForGroup(id, 5),
+      ])
+    : [[], [], null, []];
   const myDebt = balances?.debts.find((d) => d.userId === user.id);
 
   return (
@@ -136,6 +149,38 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
           ) : (
             matches.map((m) => <MatchCard key={m.id} match={m} />)
           )}
+        </section>
+      )}
+
+      {isMember && past.length > 0 && (
+        <section aria-labelledby="ultimos" className="flex flex-col gap-3">
+          <SectionTitle id="ultimos">Últimos partidos</SectionTitle>
+          <ul className="flex flex-col divide-y rounded-2xl border bg-card">
+            {past.map((m) => (
+              <li key={m.id}>
+                <Link href={`/partidos/${m.id}`} className="flex items-center gap-3 px-4 py-3">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-[15px] font-medium">{formatShortDate(m.startsAt)}</span>
+                    <span className="text-[13px] text-muted-foreground">{FORMAT_LABEL[m.format]}</span>
+                  </span>
+                  {m.status === "played" ? (
+                    <span className="font-display text-2xl font-bold tabular-nums">
+                      {m.scoreA}–{m.scoreB}
+                    </span>
+                  ) : (
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-xs font-semibold",
+                        m.status === "cancelled" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning",
+                      )}
+                    >
+                      {m.status === "cancelled" ? "Cancelado" : "Sin acta"}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
