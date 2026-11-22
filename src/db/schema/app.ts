@@ -25,6 +25,8 @@ export const memberStatusEnum = pgEnum("member_status", ["active", "left", "bann
 export const matchStatusEnum = pgEnum("match_status", ["open", "closed", "played", "cancelled"]);
 export const signupStatusEnum = pgEnum("signup_status", ["confirmed", "waitlist", "withdrawn"]);
 export const teamEnum = pgEnum("team", ["A", "B"]);
+/** What produced a level change: the self-assessment, a match result (Elo) or the ratings bonus. */
+export const ratingSourceEnum = pgEnum("rating_source", ["assessment", "match_result", "ratings"]);
 
 export const groups = pgTable(
   "groups",
@@ -121,6 +123,8 @@ export const matches = pgTable(
     /** When/who registered (or last corrected) the result. */
     resultRecordedAt: timestamp("result_recorded_at", { withTimezone: true }),
     resultRecordedBy: uuid("result_recorded_by").references(() => users.id, { onDelete: "set null" }),
+    /** Ratings window closed and the ratings bonus applied (phase 2c). */
+    ratingsClosedAt: timestamp("ratings_closed_at", { withTimezone: true }),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
@@ -248,6 +252,7 @@ export const ratingHistory = pgTable(
     ratingBefore: doublePrecision("rating_before"),
     ratingAfter: doublePrecision("rating_after").notNull(),
     delta: doublePrecision("delta").notNull().default(0),
+    source: ratingSourceEnum("source").notNull().default("match_result"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("rating_history_user_idx").on(t.userId, t.createdAt)],

@@ -92,7 +92,14 @@ async function main() {
     .insert(ratingHistory)
     .values(
       // Self-assessment a month ago, before any match.
-      inserted.map((u) => ({ userId: u.id, ratingBefore: null, ratingAfter: u.rating!, delta: 0, createdAt: daysFromNow(-30, 12) })),
+      inserted.map((u) => ({
+        userId: u.id,
+        ratingBefore: null,
+        ratingAfter: u.rating!,
+        delta: 0,
+        source: "assessment" as const,
+        createdAt: daysFromNow(-30, 12),
+      })),
     );
 
   const [alex, javi, ...rest] = inserted;
@@ -215,7 +222,14 @@ async function main() {
     await db.update(users).set({ rating: c.after, matchesPlayed: 7 }).where(eq(users.id, c.userId));
   }
   await db.insert(ratingHistory).values(
-    changes.map((c) => ({ userId: c.userId, matchId: lastWeek.id, ratingBefore: c.before, ratingAfter: c.after, delta: c.delta })),
+    changes.map((c) => ({
+      userId: c.userId,
+      matchId: lastWeek.id,
+      ratingBefore: c.before,
+      ratingAfter: c.after,
+      delta: c.delta,
+      source: "match_result" as const,
+    })),
   );
 
   // Everyone rates everyone else (Phase 2b), around how each one played.
