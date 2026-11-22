@@ -149,8 +149,10 @@ export const matchSignups = pgTable(
     status: signupStatusEnum("status").notNull(),
     /** Waitlist order (1 = next up). Null when not on the waitlist. */
     positionInQueue: integer("position_in_queue"),
-    /** Fixed when the match closes. */
+    /** Fixed when the match closes (re-split if the report adds players). */
     amountDueCents: integer("amount_due_cents"),
+    /** Created/confirmed by the match report: played without signing up. */
+    addedInReport: boolean("added_in_report").notNull().default(false),
     paid: boolean("paid").notNull().default(false),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

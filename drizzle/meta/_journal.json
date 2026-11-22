@@ -50,6 +50,13 @@
       "when": 1795286589968,
       "tag": "0006_ratings_affect_level",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795345436960,
+      "tag": "0007_report_payments",
+      "breakpoints": true
     }
   ]
 }

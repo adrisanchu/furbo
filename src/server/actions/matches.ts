@@ -164,6 +164,11 @@ export async function saveMatchReport(matchId: string, input: MatchReportInput) 
     const report = matchReportSchema.parse(input);
     const outcome = await saveReport(matchId, user.id, report);
     refresh();
-    return { played: outcome.played, corrected: outcome.corrected, players: outcome.changes.length };
+    return {
+      played: outcome.played,
+      corrected: outcome.corrected,
+      players: outcome.changes.length,
+      resplit: outcome.resplit,
+    };
   });
 }
