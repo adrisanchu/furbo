@@ -69,6 +69,8 @@ pnpm dev
 
 ## Las notas cuentan para el nivel (fase 2c)
 
+Explicación completa con ejemplos (Elo + bonus, y cuándo se puede perder nivel aunque ganes): [docs/nivel.md](docs/nivel.md).
+
 - Las notas se pueden poner hasta **48 h después de guardar el acta**. Después se cierran y cada jugador recibe un **bonus** aparte del Elo del resultado:
   `bonus = 0.08 × (su media − la media del partido)`, con un máximo de **±0.15** por partido.
 - Solo cuentan las notas de **otros** jugadores (las propias se ignoran para el nivel), y hacen falta **3 o más** para tener bonus; la media del partido es la de los jugadores con bonus (mínimo 2).
