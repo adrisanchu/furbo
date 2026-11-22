@@ -76,7 +76,14 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
       : isOpen && !full
         ? { label: "Si te apuntas ahora", cents: joinPrice ?? 0 }
         : { label: "Precio por jugador", cents: match.pricePerPlayerCents ?? costPerPlayerCents(match.courtPriceCents, confirmed.length) };
-  const divisor = isOpen && myLive == null && !full ? confirmed.length + 1 : Math.max(confirmed.length, 1);
+  // After closing, everyone who owes splits the court (incl. late withdrawers and report additions).
+  const payersCount = signups.filter((s) => s.amountDueCents != null && s.amountDueCents > 0).length;
+  const resplitInReport = signups.some((s) => s.addedInReport && s.status === "confirmed");
+  const divisor = isOpen
+    ? myLive == null && !full
+      ? confirmed.length + 1
+      : Math.max(confirmed.length, 1)
+    : Math.max(payersCount || confirmed.length, 1);
 
   // Call to action
   const cta: CtaState = (() => {
@@ -211,7 +218,8 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
               <span className="text-[13px] text-muted-foreground">{price.label}</span>
               <span className="font-display text-[40px] leading-none font-bold">{formatEuros(price.cents)}</span>
               <span className="text-[13px] text-muted-foreground">
-                {isOpen ? "Pista" : "Fijado al cerrar ·"} {formatEuros(match.courtPriceCents)} ÷ {divisor}
+                {isOpen ? "Pista" : resplitInReport ? "Recalculado en el acta ·" : "Fijado al cerrar ·"}{" "}
+                {formatEuros(match.courtPriceCents)} ÷ {divisor}
               </span>
               {isOpen && (
                 <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-accent-foreground gamer:text-primary">
@@ -352,6 +360,7 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
                   <span className="text-[13px] text-muted-foreground">
                     {formatEuros(p.amountDueCents!)}
                     {p.status === "withdrawn" && " · se borró tarde"}
+                    {p.addedInReport && " · añadido en el acta"}
                   </span>
                 </span>
                 <PaymentToggle matchId={id} userId={p.userId} name={fullName(p)} paid={p.paid} />

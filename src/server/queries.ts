@@ -245,6 +245,7 @@ export async function matchSignupsList(matchId: string) {
       positionInQueue: matchSignups.positionInQueue,
       amountDueCents: matchSignups.amountDueCents,
       paid: matchSignups.paid,
+      addedInReport: matchSignups.addedInReport,
       createdAt: matchSignups.createdAt,
       updatedAt: matchSignups.updatedAt,
     })

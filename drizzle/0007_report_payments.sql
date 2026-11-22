@@ -1,0 +1,1 @@
+ALTER TABLE "match_signups" ADD COLUMN "added_in_report" boolean DEFAULT false NOT NULL;

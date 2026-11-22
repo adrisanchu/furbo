@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { emptyLine, reportWarnings, statSummary, type PlayerLine, type StatKey, type Team } from "@/lib/domain/match-report";
+import { formatEuros } from "@/lib/domain/money";
 import { cn } from "@/lib/utils";
 import { saveMatchReport } from "@/server/actions/matches";
 
@@ -92,6 +93,9 @@ export function ReportForm({
             : "¡Acta guardada! Niveles actualizados"
           : "Alineación guardada",
       );
+      if (result.data.resplit) {
+        toast.info(`Reparto recalculado: ${formatEuros(result.data.resplit.perPlayerCents)} cada uno`);
+      }
       router.push(`/partidos/${matchId}`);
     });
   }
@@ -119,6 +123,9 @@ export function ReportForm({
           (showOthers ? (
             <>
               <h3 className="mt-2 text-[13px] font-semibold text-muted-foreground">Otros miembros (no apuntados)</h3>
+              <p className="-mt-1 text-[13px] text-muted-foreground">
+                Si los pones a jugar, al guardar el acta pasan a pagar su parte y se recalcula el reparto de la pista.
+              </p>
               <PlayerList candidates={others} lines={lines} onTeam={setTeam} onKeeper={(id, v) => patch(id, { isGoalkeeper: v })} />
             </>
           ) : (

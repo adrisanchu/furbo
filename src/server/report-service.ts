@@ -1,9 +1,11 @@
 import "server-only";
 import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
 import { db } from "@/db";
-import { groupMembers, matches, matchPlayers, playerRatings, ratingHistory, users } from "@/db/schema";
+import { groupMembers, matches, matchPlayers, matchSignups, playerRatings, ratingHistory, users } from "@/db/schema";
 import { computeLevelChanges, isProvisional, type LevelChange } from "@/lib/domain/elo";
 import { clampRating } from "@/lib/domain/level";
+import { costPerPlayerCents } from "@/lib/domain/money";
+import { planReportPayments } from "@/lib/domain/report-payments";
 import type { MatchReportInput } from "@/lib/validation/report";
 import { ActionError } from "./errors";
 import { closeLockedMatch, lockMatch, type Tx } from "./match-service";
@@ -89,7 +91,57 @@ async function applyLevelChanges(tx: Tx, matchId: string, report: MatchReportInp
   return changes;
 }
 
-export type SaveReportOutcome = { played: boolean; corrected: boolean; changes: LevelChange[] };
+export type SaveReportOutcome = {
+  played: boolean;
+  corrected: boolean;
+  changes: LevelChange[];
+  /** Set when the report added/removed payers and the court price was split again. */
+  resplit: { added: number; removed: number; perPlayerCents: number } | null;
+};
+
+/**
+ * Players in the report who didn't sign up become payers, and the court price
+ * is split again among everyone who owes (see lib/domain/report-payments.ts).
+ * Corrections that remove such players undo it. Paid flags are kept.
+ */
+async function resplitForReport(tx: Tx, match: { id: string; courtPriceCents: number }, lineupIds: string[]) {
+  const signups = await tx
+    .select({
+      userId: matchSignups.userId,
+      status: matchSignups.status,
+      amountDueCents: matchSignups.amountDueCents,
+      addedInReport: matchSignups.addedInReport,
+    })
+    .from(matchSignups)
+    .where(eq(matchSignups.matchId, match.id));
+  const plan = planReportPayments({ signups, lineupIds });
+  if (!plan.changed) return null;
+
+  for (const userId of plan.add) {
+    await tx
+      .insert(matchSignups)
+      .values({ matchId: match.id, userId, status: "confirmed", addedInReport: true })
+      .onConflictDoUpdate({
+        target: [matchSignups.matchId, matchSignups.userId],
+        set: { status: "confirmed", positionInQueue: null, addedInReport: true },
+      });
+  }
+  if (plan.drop.length) {
+    await tx
+      .update(matchSignups)
+      .set({ status: "withdrawn", amountDueCents: null, addedInReport: false })
+      .where(and(eq(matchSignups.matchId, match.id), inArray(matchSignups.userId, plan.drop)));
+  }
+  const perPlayerCents = costPerPlayerCents(match.courtPriceCents, plan.payers.length);
+  if (plan.payers.length) {
+    await tx
+      .update(matchSignups)
+      .set({ amountDueCents: perPlayerCents })
+      .where(and(eq(matchSignups.matchId, match.id), inArray(matchSignups.userId, plan.payers)));
+  }
+  await tx.update(matches).set({ pricePerPlayerCents: perPlayerCents }).where(eq(matches.id, match.id));
+  return { added: plan.add.length, removed: plan.drop.length, perPlayerCents };
+}
 
 /**
  * Saves the match report in one transaction (match row locked):
@@ -147,8 +199,9 @@ export async function saveMatchReport(matchId: string, recordedBy: string, repor
       );
     }
 
-    if (!report.result) return { played: false, corrected: false, changes: [] };
+    if (!report.result) return { played: false, corrected: false, changes: [], resplit: null };
 
+    const resplit = await resplitForReport(tx, match, ids);
     const changes = await applyLevelChanges(tx, matchId, { ...report, result: report.result });
     await tx
       .update(matches)
@@ -162,6 +215,6 @@ export async function saveMatchReport(matchId: string, recordedBy: string, repor
         ratingsClosedAt: null,
       })
       .where(eq(matches.id, matchId));
-    return { played: true, corrected, changes };
+    return { played: true, corrected, changes, resplit };
   });
 }
