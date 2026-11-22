@@ -17,10 +17,13 @@ export function RatingsForm({
   matchId,
   players,
   initial,
+  readOnly = false,
 }: {
   matchId: string;
   players: Player[];
   initial: Record<string, number>;
+  /** Ratings window closed: show the user's ratings without editing. */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -71,7 +74,7 @@ export function RatingsForm({
                       >
                         {score == null ? "Sin nota" : formatRating(score)}
                       </span>
-                      {score != null && (
+                      {score != null && !readOnly && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -90,6 +93,7 @@ export function RatingsForm({
                       max={RATING_MAX}
                       step={RATING_STEP}
                       value={score ?? 5}
+                      disabled={readOnly}
                       aria-valuetext={score == null ? "Sin nota" : formatRating(score)}
                       onChange={(e) => setScores((s) => ({ ...s, [p.userId]: Number(e.target.value) }))}
                       className={cn("h-11 w-full accent-primary", score == null && "opacity-40")}
@@ -101,15 +105,17 @@ export function RatingsForm({
           </section>
         );
       })}
-      <div className="flex flex-col gap-2">
-        <Button size="xl" disabled={pending || changed.length === 0} onClick={submit}>
-          {pending && <Spinner />}
-          Guardar notas
-        </Button>
-        <p className="text-center text-[13px] text-muted-foreground">
-          {rated} de {players.length} valorados. Puedes cambiar tus notas cuando quieras.
-        </p>
-      </div>
+      {!readOnly && (
+        <div className="flex flex-col gap-2">
+          <Button size="xl" disabled={pending || changed.length === 0} onClick={submit}>
+            {pending && <Spinner />}
+            Guardar notas
+          </Button>
+          <p className="text-center text-[13px] text-muted-foreground">
+            {rated} de {players.length} valorados. Puedes cambiarlas hasta que se cierren las notas.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

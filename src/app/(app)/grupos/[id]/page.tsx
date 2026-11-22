@@ -8,7 +8,8 @@ import { MatchCard } from "@/components/app/match-card";
 import { EmptyState, PageHeader, SectionTitle } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { formatLevel } from "@/lib/domain/level";
-import { fullName } from "@/lib/domain/nickname";
+import { buildBoards } from "@/lib/domain/leaderboards";
+import { fullName, shortName } from "@/lib/domain/nickname";
 import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { formatEuros } from "@/lib/domain/money";
 import { formatShortDate } from "@/lib/domain/time";
@@ -23,6 +24,7 @@ import {
   groupById,
   groupMembersList,
   pastMatchesForGroup,
+  playerTotals,
   upcomingMatchesForUser,
 } from "@/server/queries";
 import { MemberActions } from "./member-actions";
@@ -41,14 +43,23 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
   // Private groups are invisible to non-members (PRD §5.3).
   if (!isMember && group.visibility === "private") notFound();
 
-  const [members, matches, balances, past] = isMember
+  const [members, matches, balances, past, totals] = isMember
     ? await Promise.all([
         groupMembersList(id),
         upcomingMatchesForUser(user.id, { groupId: id }),
         groupBalances(id),
         pastMatchesForGroup(id, 5),
+        playerTotals({ groupId: id }),
       ])
-    : [[], [], null, []];
+    : [[], [], null, [], []];
+  // Teaser for the stats card: current top scorer and MVP leader.
+  const leaders = buildBoards(totals, 1);
+  const topScorer = leaders.find((b) => b.key === "goals")?.entries[0];
+  const topMvp = leaders.find((b) => b.key === "mvps")?.entries[0];
+  const leaderName = (userId: string | undefined) => {
+    const m = members.find((x) => x.userId === userId);
+    return userId === user.id ? "Tú" : m ? shortName(m) : "";
+  };
   const myDebt = balances?.debts.find((d) => d.userId === user.id);
 
   return (
@@ -120,6 +131,26 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
         </section>
       )}
 
+      {isMember && (
+        <Link
+          href={`/grupos/${id}/estadisticas`}
+          className="flex items-center gap-3.5 rounded-2xl bg-card p-4 halo-border transition-transform active:scale-[0.99]"
+        >
+          <span className="flex size-12 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Trophy aria-hidden="true" className="size-6" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[17px] font-bold">Estadísticas y clasificaciones</span>
+            <span className="truncate text-[13px] text-muted-foreground">
+              {topScorer
+                ? `Pichichi: ${leaderName(topScorer.userId)} (${topScorer.value})${topMvp ? ` · MVP: ${leaderName(topMvp.userId)} (${topMvp.value})` : ""}`
+                : "Pichichi, Zamora, MVP, golazos… cuando haya actas"}
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 flex-none text-accent-foreground gamer:text-primary" />
+        </Link>
+      )}
+
       {isAdmin && (
         <div className="grid grid-cols-2 gap-2.5">
           <Button asChild size="lg">
@@ -154,32 +185,7 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
 
       {isMember && past.length > 0 && (
         <section aria-labelledby="ultimos" className="flex flex-col gap-3">
-          <SectionTitle
-            id="ultimos"
-            aside={
-              <Link
-                href={`/grupos/${id}/estadisticas`}
-                className="text-sm font-semibold text-accent-foreground gamer:text-primary"
-              >
-                Estadísticas
-              </Link>
-            }
-          >
-            Últimos partidos
-          </SectionTitle>
-          <Link
-            href={`/grupos/${id}/estadisticas`}
-            className="flex items-center gap-3.5 rounded-2xl border bg-card px-4 py-3.5 transition-colors hover:border-subtle"
-          >
-            <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-warning/15 text-warning">
-              <Trophy aria-hidden="true" className="size-[22px]" />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-[15px] font-semibold">Clasificaciones del grupo</span>
-              <span className="text-[13px] text-muted-foreground">Pichichi, Zamora, MVP, golazos, paradones…</span>
-            </span>
-            <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />
-          </Link>
+          <SectionTitle id="ultimos">Últimos partidos</SectionTitle>
           <ul className="flex flex-col divide-y rounded-2xl border bg-card">
             {past.map((m) => (
               <li key={m.id}>

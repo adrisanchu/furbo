@@ -1,4 +1,5 @@
 import { closeDueMatches, notifyBelowMinimum } from "@/server/match-service";
+import { closeDueRatings } from "@/server/rating-bonus-service";
 
 /**
  * Closes matches whose sign-up deadline has passed and emails admins when a
@@ -18,5 +19,6 @@ export async function GET(request: Request) {
 
   const { closed, belowMinimum } = await closeDueMatches();
   await notifyBelowMinimum(belowMinimum);
-  return Response.json({ closed, belowMinimum: belowMinimum.length });
+  const ratings = await closeDueRatings();
+  return Response.json({ closed, belowMinimum: belowMinimum.length, ratingsClosed: ratings.closed });
 }

@@ -10,6 +10,7 @@ import { SpotsBar, spotsLabel } from "@/components/app/spots-bar";
 import { Button } from "@/components/ui/button";
 import { formatLevel, roundRating } from "@/lib/domain/level";
 import { fullName, shortName } from "@/lib/domain/nickname";
+import { areRatingsOpen, ratingsDeadline } from "@/lib/domain/rating-bonus";
 import { pickMvp } from "@/lib/domain/ratings";
 import { FORMAT_LABEL, isFrozen, priceIfJoining, STATUS_LABEL } from "@/lib/domain/matches";
 import { costPerPlayerCents, formatEuros } from "@/lib/domain/money";
@@ -41,6 +42,7 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
     matchLineup(id),
     matchRatings(id, user.id),
   ]);
+  const ratingsOpen = areRatingsOpen(match, new Date());
   const mvpId = pickMvp(
     lineup.map((p) => ({
       userId: p.userId,
@@ -247,12 +249,16 @@ export default async function MatchPage({ params }: PageProps<"/partidos/[id]">)
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-[15px] font-semibold">
-              {ratings.mine.size ? "Cambiar mis notas" : "Valorar jugadores"}
+              {!ratingsOpen ? "Notas cerradas" : ratings.mine.size ? "Cambiar mis notas" : "Valorar jugadores"}
             </span>
             <span className="text-[13px] text-muted-foreground">
-              {ratings.mine.size
-                ? `Has valorado a ${ratings.mine.size} de ${lineup.length}`
-                : "Pon nota a cada uno. El MVP sale de la mejor media."}
+              {!ratingsOpen
+                ? "Ya cuentan para el nivel de cada jugador."
+                : `Hasta el ${formatDateTime(ratingsDeadline(match.resultRecordedAt!))} · ${
+                    ratings.mine.size
+                      ? `has valorado a ${ratings.mine.size} de ${lineup.length}`
+                      : "el MVP sale de la mejor media"
+                  }`}
             </span>
           </span>
           <ChevronRight aria-hidden="true" className="size-5 flex-none text-muted-foreground" />

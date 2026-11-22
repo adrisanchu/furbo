@@ -28,7 +28,21 @@ export default async function ProfilePage() {
     levelHistory(user.id),
     playerTotals({ userId: user.id }),
   ]);
-  const recent = history.filter((h) => h.matchId).slice(-5).reverse();
+  // One entry per match: the result row plus, once ratings closed, the bonus row.
+  const timeline = history.reduce<
+    ((typeof history)[number] & { bonus: number | null })[]
+  >((acc, h) => {
+    const last = acc[acc.length - 1];
+    if (h.matchId && last?.matchId === h.matchId) {
+      last.delta = Math.round((last.delta + h.delta) * 100) / 100;
+      last.ratingAfter = h.ratingAfter;
+      if (h.source === "ratings") last.bonus = h.delta;
+      return acc;
+    }
+    acc.push({ ...h, bonus: h.source === "ratings" ? h.delta : null });
+    return acc;
+  }, []);
+  const recent = timeline.filter((h) => h.matchId).slice(-5).reverse();
   const position = (user.preferredPosition ?? "any") as Position;
   const matchesPlayed = user.matchesPlayed ?? 0;
   const changedAt = user.nicknameChangedAt ? new Date(user.nicknameChangedAt) : null;
@@ -100,7 +114,7 @@ export default async function ProfilePage() {
           Evolución del nivel
         </h2>
         <div className="rounded-2xl border bg-card p-4">
-          <LevelChart points={history.map((h) => ({ at: h.at, rating: h.ratingAfter, isAssessment: !h.matchId }))} />
+          <LevelChart points={timeline.map((h) => ({ at: h.at, rating: h.ratingAfter, isAssessment: !h.matchId }))} />
         </div>
         {recent.length > 0 && (
           <ul className="flex flex-col divide-y rounded-2xl border bg-card">
@@ -126,7 +140,10 @@ export default async function ProfilePage() {
                       <span className="text-[15px] font-medium tabular-nums">
                         {mine}–{theirs} · <span className="text-muted-foreground">{h.groupName}</span>
                       </span>
-                      <span className="text-[13px] text-muted-foreground">{formatShortDate(h.at)}</span>
+                      <span className="text-[13px] text-muted-foreground">
+                        {formatShortDate(h.at)}
+                        {h.bonus != null && h.bonus !== 0 && ` · notas ${h.bonus > 0 ? "+" : "−"}${Math.abs(h.bonus).toFixed(2)}`}
+                      </span>
                     </span>
                     <span
                       className={cn(

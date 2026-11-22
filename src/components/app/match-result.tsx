@@ -21,7 +21,10 @@ type LineupRow = {
   superGoals: number;
   superSaves: number;
   ratingBefore: number | null;
+  /** Level change from the result (Elo). */
   delta: number | null;
+  /** Level change from the ratings bonus, once ratings closed (phase 2c). */
+  ratingBonus?: number | null;
   currentRating: number | null;
 };
 
@@ -98,6 +101,7 @@ export function MatchResult({
                 <ul className="flex flex-col gap-2.5">
                   {rows.map((p) => {
                     const summary = statSummary(p);
+                    const total = p.delta == null ? null : Math.round((p.delta + (p.ratingBonus ?? 0)) * 100) / 100;
                     return (
                       <li key={p.userId} className="flex items-center gap-2.5">
                         <PlayerAvatar id={p.userId} name={fullName(p)} highlight={p.userId === meId} className="size-8" />
@@ -113,6 +117,14 @@ export function MatchResult({
                             )}
                           </span>
                           {summary && <span className="truncate text-xs text-muted-foreground">{summary}</span>}
+                          {p.ratingBonus != null && p.ratingBonus !== 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              Notas{" "}
+                              <span className={p.ratingBonus > 0 ? "text-level-up" : "text-level-down"}>
+                                {formatDelta(p.ratingBonus)}
+                              </span>
+                            </span>
+                          )}
                         </span>
                         {ratings?.get(p.userId) && (
                           <span
@@ -123,16 +135,18 @@ export function MatchResult({
                             {formatRating(Math.round(ratings.get(p.userId)!.average * 10) / 10)}
                           </span>
                         )}
-                        {p.delta != null && (
+                        {total != null && (
                           <span
+                            title={p.ratingBonus ? "Resultado + notas" : "Resultado"}
                             className={cn(
                               "font-display text-base font-bold tabular-nums",
-                              p.delta > 0 && "text-level-up",
-                              p.delta < 0 && "text-level-down",
-                              p.delta === 0 && "text-muted-foreground",
+                              total > 0 && "text-level-up",
+                              total < 0 && "text-level-down",
+                              total === 0 && "text-muted-foreground",
                             )}
                           >
-                            {formatDelta(p.delta)}
+                            <span className="sr-only">Cambio de nivel </span>
+                            {formatDelta(total)}
                           </span>
                         )}
                       </li>
