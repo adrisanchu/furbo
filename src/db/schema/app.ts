@@ -25,6 +25,8 @@ export const memberStatusEnum = pgEnum("member_status", ["active", "left", "bann
 export const matchStatusEnum = pgEnum("match_status", ["open", "closed", "played", "cancelled"]);
 export const signupStatusEnum = pgEnum("signup_status", ["confirmed", "waitlist", "withdrawn"]);
 export const teamEnum = pgEnum("team", ["A", "B"]);
+/** What produced a level change: the self-assessment, a match result (Elo) or the ratings bonus. */
+export const ratingSourceEnum = pgEnum("rating_source", ["assessment", "match_result", "ratings"]);
 
 export const groups = pgTable(
   "groups",
@@ -118,6 +120,11 @@ export const matches = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     scoreA: integer("score_a"),
     scoreB: integer("score_b"),
+    /** When/who registered (or last corrected) the result. */
+    resultRecordedAt: timestamp("result_recorded_at", { withTimezone: true }),
+    resultRecordedBy: uuid("result_recorded_by").references(() => users.id, { onDelete: "set null" }),
+    /** Ratings window closed and the ratings bonus applied (phase 2c). */
+    ratingsClosedAt: timestamp("ratings_closed_at", { withTimezone: true }),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
@@ -140,7 +147,6 @@ export const matchSignups = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: signupStatusEnum("status").notNull(),
-    team: teamEnum("team"),
     /** Waitlist order (1 = next up). Null when not on the waitlist. */
     positionInQueue: integer("position_in_queue"),
     /** Fixed when the match closes. */
@@ -160,6 +166,80 @@ export const matchSignups = pgTable(
   ],
 );
 
+/**
+ * Line-up and stats of a match (the "acta"), one row per player who played.
+ * Separate from match_signups: signing up (and paying) is not the same as
+ * playing — no-shows have a signup but no row here, and an admin can add a
+ * member who played without signing up.
+ */
+export const matchPlayers = pgTable(
+  "match_players",
+  {
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    team: teamEnum("team").notNull(),
+    isGoalkeeper: boolean("is_goalkeeper").notNull().default(false),
+    goals: integer("goals").notNull().default(0),
+    assists: integer("assists").notNull().default(0),
+    saves: integer("saves").notNull().default(0),
+    ownGoals: integer("own_goals").notNull().default(0),
+    /** Golazos: subset of goals. */
+    superGoals: integer("super_goals").notNull().default(0),
+    /** Paradones: subset of saves. */
+    superSaves: integer("super_saves").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.userId] }),
+    index("match_players_user_idx").on(t.userId),
+    check(
+      "match_players_counts_valid",
+      sql`${t.goals} >= 0 and ${t.assists} >= 0 and ${t.saves} >= 0 and ${t.ownGoals} >= 0
+        and ${t.superGoals} between 0 and ${t.goals} and ${t.superSaves} between 0 and ${t.saves}`,
+    ),
+  ],
+);
+
+/**
+ * Ratings players give each other after a match (0–10 in half points,
+ * stored as halves 0–20). One rating per (match, rater, rated); changing it
+ * overwrites. Phase 2b: anyone in the group can rate anyone who played.
+ */
+export const playerRatings = pgTable(
+  "player_ratings",
+  {
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    raterId: uuid("rater_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ratedId: uuid("rated_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scoreHalves: integer("score_halves").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.raterId, t.ratedId] }),
+    index("player_ratings_match_rated_idx").on(t.matchId, t.ratedId),
+    index("player_ratings_rated_idx").on(t.ratedId),
+    check("player_ratings_score_range", sql`${t.scoreHalves} between 0 and 20`),
+  ],
+);
+
 export const ratingHistory = pgTable(
   "rating_history",
   {
@@ -172,6 +252,7 @@ export const ratingHistory = pgTable(
     ratingBefore: doublePrecision("rating_before"),
     ratingAfter: doublePrecision("rating_after").notNull(),
     delta: doublePrecision("delta").notNull().default(0),
+    source: ratingSourceEnum("source").notNull().default("match_result"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("rating_history_user_idx").on(t.userId, t.createdAt)],

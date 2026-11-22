@@ -5,10 +5,12 @@ import { refresh } from "next/cache";
 import { db } from "@/db";
 import { groups, matches, matchSignups } from "@/db/schema";
 import { matchFormSchema, toMatchValues, type MatchFormValues } from "@/lib/validation/match";
+import { matchReportSchema, type MatchReportInput } from "@/lib/validation/report";
 import { ActionError, idSchema, runAction } from "../action";
 import { requireAdmin, requireMember } from "../authz";
 import { geocode } from "../geocode";
 import * as service from "../match-service";
+import { saveMatchReport as saveReport } from "../report-service";
 
 async function groupIdOf(matchId: string) {
   idSchema.parse(matchId);
@@ -151,5 +153,17 @@ export async function setPaid(matchId: string, userId: string, paid: boolean) {
     const result = await service.setPaid(matchId, userId, paid);
     refresh();
     return result;
+  });
+}
+
+/** Admin: planned line-up (no result) or the final report with score and stats. */
+export async function saveMatchReport(matchId: string, input: MatchReportInput) {
+  return runAction(async () => {
+    const groupId = await groupIdOf(matchId);
+    const { user } = await requireAdmin(groupId);
+    const report = matchReportSchema.parse(input);
+    const outcome = await saveReport(matchId, user.id, report);
+    refresh();
+    return { played: outcome.played, corrected: outcome.corrected, players: outcome.changes.length };
   });
 }

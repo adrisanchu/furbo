@@ -50,6 +50,34 @@ pnpm dev
 - **Cierre automático:** los partidos vencidos se cierran al abrir la app (cierre perezoso) y con un cron diario (`/api/cron/cerrar-partidos`, el máximo en Vercel Hobby). Si no se llega al mínimo, se avisa por email a los admins.
 - Toda la lógica está en funciones puras (`src/lib/domain`) con tests; el servidor la aplica en una transacción con `SELECT … FOR UPDATE` sobre el partido.
 
+## Actas, estadísticas y nivel (fase 2a)
+
+- **Acta del partido** (`/partidos/[id]/acta`, solo admins): antes del partido se guarda la **alineación prevista** (equipo A/B y portero); después, el **marcador** y las estadísticas de cada jugador: goles, asistencias, paradas, goles en propia, **golazos** (subconjunto de los goles) y **paradones** (subconjunto de las paradas). Se guardan como contadores por jugador y partido (`match_players`).
+- Quien no está en la alineación no cuenta (no presentados). Un admin puede añadir a un miembro que jugó sin apuntarse. Apuntarse/pagar (`match_signups`) y jugar (`match_players`) son cosas distintas.
+- Si los goles apuntados no cuadran con el marcador, o falta portero, se muestra un **aviso**; no impide guardar.
+- **Nivel:** al guardar el acta el partido pasa a `jugado` y se aplica el Elo por equipos del PRD §5.5 (`src/lib/domain/elo.ts`), se guarda en `rating_history` y suma `matches_played` (provisional hasta 5 partidos).
+- **Corregir un acta** deshace los cambios de nivel de **ese** partido y vuelve a aplicarlos con los datos nuevos (no recalcula los partidos posteriores).
+- Los admins ven «Falta el acta» en Inicio para los partidos ya empezados sin resultado. El perfil muestra la evolución del nivel y los últimos partidos.
+
+## Notas, MVP y clasificaciones (fase 2b)
+
+- **Notas:** cuando un partido tiene acta, cualquier miembro del grupo puede poner nota (0–10, de medio en medio punto) a quien jugó, incluido él mismo (de momento se guarda todo; se podrá filtrar después). Se guardan como medios puntos (`player_ratings.score_halves`, 0–20) y se pueden cambiar cuando se quiera. Solo se muestra la **media** de cada jugador, nunca la nota individual.
+- **MVP** de cada partido: la mejor media; empate → más valoraciones → más goles + asistencias.
+- **Clasificaciones por grupo** (`/grupos/[id]/estadisticas`): Pichichi, Asistencias, Golazos, Zamora (menos goles encajados por partido en portería), Paradones, MVP, Mejor nota media y Fijos (más partidos). Zamora y nota media piden un mínimo de 3 partidos. Las consultas aceptan un rango de fechas (`playerTotals`), así que una «temporada» es solo un filtro por fecha.
+- El perfil muestra «Tus números» (en todos tus grupos) e Inicio recuerda valorar el último partido jugado (7 días).
+- Las notas ajustan el nivel desde la fase 2c (abajo).
+
+## Las notas cuentan para el nivel (fase 2c)
+
+Explicación completa con ejemplos (Elo + bonus, y cuándo se puede perder nivel aunque ganes): [docs/nivel.md](docs/nivel.md).
+
+- Las notas se pueden poner hasta **48 h después de guardar el acta**. Después se cierran y cada jugador recibe un **bonus** aparte del Elo del resultado:
+  `bonus = 0.08 × (su media − la media del partido)`, con un máximo de **±0.15** por partido.
+- Solo cuentan las notas de **otros** jugadores (las propias se ignoran para el nivel), y hacen falta **3 o más** para tener bonus; la media del partido es la de los jugadores con bonus (mínimo 2).
+- El cierre se hace al abrir la app (cierre perezoso) y en el cron diario (`closeDueRatings`). Cada cambio queda en `rating_history` con `source = 'ratings'` (`'match_result'` para el Elo, `'assessment'` para la autoevaluación).
+- **Corregir un acta** deshace el Elo y el bonus de ese partido y **reabre las notas** otras 48 h.
+- En el partido se ve el cambio total por jugador y el desglose «Notas +0.08»; el perfil muestra un punto por partido.
+
 ## Estructura
 
 ```

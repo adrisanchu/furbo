@@ -1,4 +1,4 @@
-import { CalendarPlus, Lock, MapPin, MessageCircle, Settings, UserPlus } from "lucide-react";
+import { CalendarPlus, ChevronRight, Lock, MapPin, MessageCircle, Settings, Trophy, UserPlus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,15 +8,25 @@ import { MatchCard } from "@/components/app/match-card";
 import { EmptyState, PageHeader, SectionTitle } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { formatLevel } from "@/lib/domain/level";
-import { fullName } from "@/lib/domain/nickname";
+import { buildBoards } from "@/lib/domain/leaderboards";
+import { fullName, shortName } from "@/lib/domain/nickname";
 import { FORMAT_LABEL } from "@/lib/domain/matches";
 import { formatEuros } from "@/lib/domain/money";
+import { formatShortDate } from "@/lib/domain/time";
+import { cn } from "@/lib/utils";
 import { requireUser } from "@/lib/session";
 import { POSITION_LABEL } from "@/lib/validation/profile";
 import { idSchema } from "@/server/action";
 import { joinPublicGroup, leaveGroup } from "@/server/actions/groups";
 import { getMembership } from "@/server/authz";
-import { groupBalances, groupById, groupMembersList, upcomingMatchesForUser } from "@/server/queries";
+import {
+  groupBalances,
+  groupById,
+  groupMembersList,
+  pastMatchesForGroup,
+  playerTotals,
+  upcomingMatchesForUser,
+} from "@/server/queries";
 import { MemberActions } from "./member-actions";
 
 export const metadata: Metadata = { title: "Grupo" };
@@ -33,9 +43,23 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
   // Private groups are invisible to non-members (PRD §5.3).
   if (!isMember && group.visibility === "private") notFound();
 
-  const [members, matches, balances] = isMember
-    ? await Promise.all([groupMembersList(id), upcomingMatchesForUser(user.id, { groupId: id }), groupBalances(id)])
-    : [[], [], null];
+  const [members, matches, balances, past, totals] = isMember
+    ? await Promise.all([
+        groupMembersList(id),
+        upcomingMatchesForUser(user.id, { groupId: id }),
+        groupBalances(id),
+        pastMatchesForGroup(id, 5),
+        playerTotals({ groupId: id }),
+      ])
+    : [[], [], null, [], []];
+  // Teaser for the stats card: current top scorer and MVP leader.
+  const leaders = buildBoards(totals, 1);
+  const topScorer = leaders.find((b) => b.key === "goals")?.entries[0];
+  const topMvp = leaders.find((b) => b.key === "mvps")?.entries[0];
+  const leaderName = (userId: string | undefined) => {
+    const m = members.find((x) => x.userId === userId);
+    return userId === user.id ? "Tú" : m ? shortName(m) : "";
+  };
   const myDebt = balances?.debts.find((d) => d.userId === user.id);
 
   return (
@@ -107,6 +131,26 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
         </section>
       )}
 
+      {isMember && (
+        <Link
+          href={`/grupos/${id}/estadisticas`}
+          className="flex items-center gap-3.5 rounded-2xl bg-card p-4 halo-border transition-transform active:scale-[0.99]"
+        >
+          <span className="flex size-12 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Trophy aria-hidden="true" className="size-6" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[17px] font-bold">Estadísticas y clasificaciones</span>
+            <span className="truncate text-[13px] text-muted-foreground">
+              {topScorer
+                ? `Pichichi: ${leaderName(topScorer.userId)} (${topScorer.value})${topMvp ? ` · MVP: ${leaderName(topMvp.userId)} (${topMvp.value})` : ""}`
+                : "Pichichi, Zamora, MVP, golazos… cuando haya actas"}
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 flex-none text-accent-foreground gamer:text-primary" />
+        </Link>
+      )}
+
       {isAdmin && (
         <div className="grid grid-cols-2 gap-2.5">
           <Button asChild size="lg">
@@ -136,6 +180,38 @@ export default async function GroupPage({ params }: PageProps<"/grupos/[id]">) {
           ) : (
             matches.map((m) => <MatchCard key={m.id} match={m} />)
           )}
+        </section>
+      )}
+
+      {isMember && past.length > 0 && (
+        <section aria-labelledby="ultimos" className="flex flex-col gap-3">
+          <SectionTitle id="ultimos">Últimos partidos</SectionTitle>
+          <ul className="flex flex-col divide-y rounded-2xl border bg-card">
+            {past.map((m) => (
+              <li key={m.id}>
+                <Link href={`/partidos/${m.id}`} className="flex items-center gap-3 px-4 py-3">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-[15px] font-medium">{formatShortDate(m.startsAt)}</span>
+                    <span className="text-[13px] text-muted-foreground">{FORMAT_LABEL[m.format]}</span>
+                  </span>
+                  {m.status === "played" ? (
+                    <span className="font-display text-2xl font-bold tabular-nums">
+                      {m.scoreA}–{m.scoreB}
+                    </span>
+                  ) : (
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-xs font-semibold",
+                        m.status === "cancelled" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning",
+                      )}
+                    >
+                      {m.status === "cancelled" ? "Cancelado" : "Sin acta"}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
