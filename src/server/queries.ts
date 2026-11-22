@@ -219,6 +219,8 @@ export async function matchById(matchId: string) {
       location: matches.location,
       belowMinimumAt: matches.belowMinimumAt,
       closedAt: matches.closedAt,
+      resultRecordedAt: matches.resultRecordedAt,
+      ratingsClosedAt: matches.ratingsClosedAt,
       createdBy: matches.createdBy,
       groupBaseLabel: groups.baseLabel,
     })
@@ -320,8 +322,17 @@ export async function groupBalances(groupId: string) {
   return { debts, potCents: Math.max(0, pot?.cents ?? 0) };
 }
 
-/** Line-up and stats of a match, with each player's level change (if played). */
+/**
+ * Line-up and stats of a match, with each player's level change: the result
+ * (Elo) and, once ratings closed, the ratings bonus (phase 2c).
+ */
 export async function matchLineup(matchId: string) {
+  const historyOf = (source: "match_result" | "ratings", column: "delta" | "rating_before") =>
+    sql<number | null>`(
+      select h.${sql.raw(column)} from rating_history h
+      where h.match_id = ${matchPlayers.matchId} and h.user_id = ${matchPlayers.userId} and h.source = ${source}
+      limit 1
+    )`;
   return db
     .select({
       userId: users.id,
@@ -337,14 +348,13 @@ export async function matchLineup(matchId: string) {
       ownGoals: matchPlayers.ownGoals,
       superGoals: matchPlayers.superGoals,
       superSaves: matchPlayers.superSaves,
-      ratingBefore: ratingHistory.ratingBefore,
-      ratingAfter: ratingHistory.ratingAfter,
-      delta: ratingHistory.delta,
+      ratingBefore: historyOf("match_result", "rating_before"),
+      delta: historyOf("match_result", "delta"),
+      ratingBonus: historyOf("ratings", "delta"),
       currentRating: users.rating,
     })
     .from(matchPlayers)
     .innerJoin(users, eq(users.id, matchPlayers.userId))
-    .leftJoin(ratingHistory, and(eq(ratingHistory.matchId, matchPlayers.matchId), eq(ratingHistory.userId, matchPlayers.userId)))
     .where(eq(matchPlayers.matchId, matchId))
     .orderBy(asc(matchPlayers.team), desc(matchPlayers.isGoalkeeper), asc(users.name));
 }
@@ -403,6 +413,7 @@ export async function levelHistory(userId: string) {
       groupName: groups.name,
       ratingAfter: ratingHistory.ratingAfter,
       delta: ratingHistory.delta,
+      source: ratingHistory.source,
       scoreA: matches.scoreA,
       scoreB: matches.scoreB,
       team: matchPlayers.team,
@@ -412,7 +423,7 @@ export async function levelHistory(userId: string) {
     .leftJoin(groups, eq(groups.id, matches.groupId))
     .leftJoin(matchPlayers, and(eq(matchPlayers.matchId, ratingHistory.matchId), eq(matchPlayers.userId, ratingHistory.userId)))
     .where(eq(ratingHistory.userId, userId))
-    .orderBy(asc(sql`coalesce(${matches.startsAt}, ${ratingHistory.createdAt})`));
+    .orderBy(asc(sql`coalesce(${matches.startsAt}, ${ratingHistory.createdAt})`), asc(ratingHistory.createdAt));
 }
 
 /** Average and count of the ratings each player got in a match, plus the viewer's own ratings. */
@@ -538,7 +549,7 @@ export async function usersByIds(ids: string[]) {
     .where(inArray(users.id, ids));
 }
 
-/** Played matches (last 7 days) the user played in and hasn't rated anyone yet. */
+/** Played matches with ratings still open (48 h) that the user played in and hasn't rated yet. */
 export async function matchesToRate(userId: string) {
   return db
     .select({ id: matches.id, groupName: groups.name, startsAt: matches.startsAt })
@@ -549,7 +560,8 @@ export async function matchesToRate(userId: string) {
       and(
         eq(matchPlayers.userId, userId),
         eq(matches.status, "played"),
-        sql`${matches.startsAt} > now() - interval '7 days'`,
+        isNull(matches.ratingsClosedAt),
+        sql`${matches.resultRecordedAt} > now() - interval '48 hours'`,
         sql`not exists (select 1 from player_ratings pr where pr.match_id = ${matches.id} and pr.rater_id = ${userId})`,
       ),
     )

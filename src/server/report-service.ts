@@ -16,24 +16,32 @@ function round2(n: number) {
 }
 
 /**
- * Reverts the level changes a match applied (for corrections). Only this
- * match's deltas are undone, even if the players have played since.
+ * Reverts every level change a match applied — the Elo of the result and, if
+ * its ratings window had closed, the ratings bonus (for corrections). Only
+ * this match's deltas are undone, even if the players have played since.
  */
 async function revertLevelChanges(tx: Tx, matchId: string) {
   const previous = await tx.select().from(ratingHistory).where(eq(ratingHistory.matchId, matchId));
   if (!previous.length) return;
-  const ids = previous.map((h) => h.userId).sort();
-  const locked = await tx.select().from(users).where(inArray(users.id, ids)).orderBy(asc(users.id)).for("update");
+  // Per player: total delta to undo, and whether the match counted as played.
+  const perUser = new Map<string, { delta: number; played: boolean }>();
   for (const h of previous) {
-    const u = locked.find((x) => x.id === h.userId);
-    if (!u) continue;
-    const played = Math.max(0, u.matchesPlayed - 1);
+    const acc = perUser.get(h.userId) ?? { delta: 0, played: false };
+    acc.delta += h.delta;
+    if (h.source === "match_result") acc.played = true;
+    perUser.set(h.userId, acc);
+  }
+  const ids = [...perUser.keys()].sort();
+  const locked = await tx.select().from(users).where(inArray(users.id, ids)).orderBy(asc(users.id)).for("update");
+  for (const u of locked) {
+    const { delta, played } = perUser.get(u.id)!;
+    const matchesPlayed = played ? Math.max(0, u.matchesPlayed - 1) : u.matchesPlayed;
     await tx
       .update(users)
       .set({
-        rating: round2(clampRating((u.rating ?? DEFAULT_RATING) - h.delta)),
-        matchesPlayed: played,
-        ratingProvisional: isProvisional(played),
+        rating: round2(clampRating((u.rating ?? DEFAULT_RATING) - delta)),
+        matchesPlayed,
+        ratingProvisional: isProvisional(matchesPlayed),
       })
       .where(eq(users.id, u.id));
   }
@@ -68,7 +76,14 @@ async function applyLevelChanges(tx: Tx, matchId: string, report: MatchReportInp
   }
   if (changes.length) {
     await tx.insert(ratingHistory).values(
-      changes.map((c) => ({ userId: c.userId, matchId, ratingBefore: c.before, ratingAfter: c.after, delta: c.delta })),
+      changes.map((c) => ({
+        userId: c.userId,
+        matchId,
+        ratingBefore: c.before,
+        ratingAfter: c.after,
+        delta: c.delta,
+        source: "match_result" as const,
+      })),
     );
   }
   return changes;
@@ -143,6 +158,8 @@ export async function saveMatchReport(matchId: string, recordedBy: string, repor
         scoreB: report.result.scoreB,
         resultRecordedAt: now,
         resultRecordedBy: recordedBy,
+        // A (re)saved report (re)opens the 48 h ratings window.
+        ratingsClosedAt: null,
       })
       .where(eq(matches.id, matchId));
     return { played: true, corrected, changes };

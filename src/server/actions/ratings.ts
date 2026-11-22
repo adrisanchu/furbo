@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { db } from "@/db";
 import { matches, matchPlayers, playerRatings } from "@/db/schema";
+import { areRatingsOpen } from "@/lib/domain/rating-bonus";
 import { toHalves } from "@/lib/domain/ratings";
 import { rateMatchSchema, type RateMatchInput } from "@/lib/validation/ratings";
 import { ActionError, idSchema, runAction } from "../action";
@@ -17,12 +18,20 @@ export async function rateMatch(matchId: string, input: RateMatchInput) {
   return runAction(async () => {
     idSchema.parse(matchId);
     const [match] = await db
-      .select({ groupId: matches.groupId, status: matches.status })
+      .select({
+        groupId: matches.groupId,
+        status: matches.status,
+        resultRecordedAt: matches.resultRecordedAt,
+        ratingsClosedAt: matches.ratingsClosedAt,
+      })
       .from(matches)
       .where(eq(matches.id, matchId));
     if (!match) throw new ActionError("Ese partido no existe.");
     const { user } = await requireMember(match.groupId);
     if (match.status !== "played") throw new ActionError("Se puede valorar cuando el partido tenga acta.");
+    if (!areRatingsOpen(match, new Date())) {
+      throw new ActionError("Las notas de este partido ya están cerradas (se puede valorar hasta 48 h después del acta).");
+    }
 
     const { ratings } = rateMatchSchema.parse(input);
     const ids = ratings.map((r) => r.userId);

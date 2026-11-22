@@ -83,6 +83,7 @@ export async function completeOnboarding(input: OnboardingValues) {
         ratingBefore: user.rating ?? null,
         ratingAfter: finalRating,
         delta: user.rating != null ? Math.round((finalRating - user.rating) * 100) / 100 : 0,
+        source: "assessment",
       });
     });
     return { rating: finalRating };
